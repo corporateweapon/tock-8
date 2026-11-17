@@ -3,7 +3,7 @@
    Everything hangs off window.Tock. See CLAUDE.md for the data formats. */
 (function(){
 'use strict';
-var T={version:'4.5'};
+var T={version:'4.6'};
 
 /* ================= kits and built-in beats ================= */
 var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
@@ -584,6 +584,99 @@ function choir(time,v,r,d){
     o.connect(j===1?mix:j?right:left); o.start(time); o.stop(time+end+1);
   }); });
 }
+/* piep kick: the uptempo kick. Very short and driven until it is nearly square, with a tone left ringing in it, so a row of them plays a tune */
+function piepKick(time,v,r,d){
+  var ac=R.ac,f=110*r,len=Math.min(0.2,Math.max(0.085,CSD*1.7));
+  choke('kickG',time); choke('bassG',time);
+  var amp=ac.createGain(); amp.connect(d);
+  amp.gain.setValueAtTime(0.0001,time); amp.gain.exponentialRampToValueAtTime(0.3*v,time+0.003);
+  amp.gain.setValueAtTime(0.3*v,time+len*0.72); amp.gain.exponentialRampToValueAtTime(0.0001,time+len);
+  R.kickG=amp;
+  var o=ac.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(f*9,time); o.frequency.exponentialRampToValueAtTime(f*2.2,time+0.018); o.frequency.exponentialRampToValueAtTime(f,time+0.07);
+  o.connect(shaper(14,peaking(Math.min(2400,f*8),13,1.4,shaper(5,filter('lowpass',5200,0.5,amp)))));
+  o.start(time); o.stop(time+len+0.05);
+  osc('sine',time,200,55,0.05,0.1,gainEnv(time,0.5*v,0.09,d));
+  noise(time,0.02,filter('highpass',2500,0,gainEnv(time,0.3*v,0.012,d)));
+}
+/* break snare: the dry, crunchy snare of a sampled drum break. A soft hit is a ghost note */
+function breakSnare(time,v,r,d){
+  var sh=shaper(3,filter('highpass',170,0,d));
+  noise(time,0.16,filter('bandpass',3400*r,0.8,gainEnv(time,0.5*v,0.13,sh)));
+  noise(time,0.05,filter('highpass',6000,0,gainEnv(time,0.28*v,0.04,sh)));
+  osc('triangle',time,330*r,185*r,0.03,0.09,gainEnv(time,0.55*v,0.08,sh));
+}
+/* zaag bass: a kick's tail held as a note. A sine driven square with a snarling peak that closes, for basslines that sound as if
+   the kick is playing them. The kick cuts it off, like the reverse bass */
+function zaag(time,v,r,d){
+  var ac=R.ac,f=55*r,dur=Math.max(0.04,(CLEN||CSD*2)-CSD*0.25);
+  choke('bassG',time);
+  var amp=ampHold(time,0.24*v,0.005,dur,0.03,d); R.bassG=amp;
+  var pk=ac.createBiquadFilter(); pk.type='peaking'; pk.Q.value=2.5; pk.gain.value=14;
+  pk.frequency.setValueAtTime(Math.min(f*14,2600),time); pk.frequency.exponentialRampToValueAtTime(Math.max(f*5,320),time+Math.min(dur,0.22));
+  pk.connect(shaper(4,filter('lowpass',3800,0.5,amp)));
+  var o=ac.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(f*1.5,time); o.frequency.exponentialRampToValueAtTime(f,time+0.03);
+  o.connect(shaper(10,pk)); o.start(time); o.stop(time+dur+0.1);
+}
+/* wobble bass: saws with a square under them, through a filter that opens and shuts in time with the song. One wobble every two steps;
+   a loud note wobbles twice as fast and a soft one half as fast, so the loudness of a note picks its speed, not its volume */
+function wob(time,v,r,d){
+  var ac=R.ac,f=55*r,dur=Math.max(0.06,(CLEN||CSD*4)-CSD*0.1),per=Math.max(0.03,CSD*(v>1.2?1:v<0.6?4:2)),k='wobG'+CID,t;
+  choke(k,time);
+  var amp=ampHold(time,0.24,0.006,dur,0.04,d); R[k]=amp;
+  var lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=9;
+  lp.frequency.setValueAtTime(150,time);
+  for(t=0;t<dur;t+=per){ lp.frequency.exponentialRampToValueAtTime(2600,time+t+per*0.45); lp.frequency.exponentialRampToValueAtTime(150,time+t+per); }
+  lp.connect(shaper(5,filter('highpass',38,0,amp)));
+  var mix=ac.createGain(); mix.gain.value=0.4; mix.connect(lp);
+  [['sawtooth',1,-9,0.5],['sawtooth',1,9,0.5],['square',0.5,0,0.45],['sawtooth',2,4,0.18]].forEach(function(p){
+    var o=ac.createOscillator(),g=ac.createGain(); o.type=p[0]; o.frequency.value=f*p[1]; o.detune.value=p[2]; g.gain.value=p[3];
+    o.connect(g); g.connect(mix); o.start(time); o.stop(time+dur+0.1);
+  });
+}
+/* air horn: the sound-system horn. Two pairs of saws a fifth apart blaring through a nasal peak; it bends up as it starts and sags as it lets go */
+function horn(time,v,r,d){
+  var ac=R.ac,f=440*r,dur=CLEN||CSD*4,hold=Math.max(0.05,dur*0.9),k='hornG'+CID;
+  choke(k,time);
+  var amp=ampHold(time,0.2*v,0.012,hold,0.09,d); R[k]=amp;
+  var mix=ac.createGain(); mix.gain.value=0.4; mix.connect(peaking(1150,10,2,filter('lowpass',4200,1,shaper(4,filter('highpass',300,0,amp)))));
+  [[1,-18,0.5],[1,17,0.5],[1.4983,-9,0.4],[1.4983,12,0.4],[0.5,0,0.25]].forEach(function(p){
+    var o=ac.createOscillator(),g=ac.createGain(); o.type='sawtooth'; o.detune.value=p[1]; g.gain.value=p[2];
+    o.frequency.setValueAtTime(f*p[0]*0.93,time); o.frequency.exponentialRampToValueAtTime(f*p[0],time+0.05);
+    o.frequency.setValueAtTime(f*p[0],time+hold); o.frequency.exponentialRampToValueAtTime(f*p[0]*0.88,time+hold+0.1);
+    o.connect(g); g.connect(mix); o.start(time); o.stop(time+hold+0.2);
+  });
+}
+/* glitch burst: a square wave that jumps to another note of the key every half step for as long as it is held, with some of the
+   jumps left silent. A machine losing its mind. Every time it plays it picks different notes */
+function glitch(time,v,r,d){
+  var ac=R.ac,dur=CLEN||CSD*2,per=Math.max(0.022,CSD*0.5),o=ac.createOscillator(),g=ac.createGain(),P5=[1,1.1892,1.3348,1.4983,1.7818],t;
+  o.type='square';
+  for(t=0;t<dur-0.005;t+=per){
+    o.frequency.setValueAtTime(220*r*P5[Math.floor(Math.random()*5)]*Math.pow(2,Math.floor(Math.random()*4)),time+t);
+    g.gain.setValueAtTime(t&&Math.random()<0.22?0:1,time+t);
+  }
+  o.connect(g); g.connect(filter('bandpass',2400,0.6,shaper(3,ampHold(time,0.16*v,0.002,dur*0.97,0.012,d))));
+  o.start(time); o.stop(time+dur+0.05);
+}
+/* hey: a crowd shouting one syllable. A breath, then a handful of voices a little out of tune through a mouth that closes from "e" to "i" */
+function shout(time,v,r,d){
+  var ac=R.ac,dur=Math.min(0.28,Math.max(0.13,CSD*2.2)),amp=ac.createGain(); amp.connect(d);
+  amp.gain.setValueAtTime(0.0001,time); amp.gain.exponentialRampToValueAtTime(0.5*v,time+0.028); amp.gain.setValueAtTime(0.5*v,time+dur*0.6); amp.gain.exponentialRampToValueAtTime(0.0001,time+dur);
+  var post=shaper(2.5,filter('highpass',260,0,amp)),mix=ac.createGain(); mix.gain.value=0.3;
+  [[620,430,6,1],[1750,2150,8,0.75],[2550,2900,7,0.4]].forEach(function(fm){
+    var b=ac.createBiquadFilter(),g=ac.createGain(); b.type='bandpass'; b.Q.value=fm[2]; g.gain.value=fm[3];
+    b.frequency.setValueAtTime(fm[0],time); b.frequency.exponentialRampToValueAtTime(fm[1],time+dur*0.8);
+    mix.connect(b); b.connect(g); g.connect(post);
+  });
+  [[1,-38],[1,-13],[1,9],[1,34],[1.5,-20],[2,15]].forEach(function(p){
+    var o=ac.createOscillator(); o.type='sawtooth'; o.detune.value=p[1];
+    o.frequency.setValueAtTime(205*r*p[0]*1.1,time); o.frequency.exponentialRampToValueAtTime(205*r*p[0],time+0.05); o.frequency.exponentialRampToValueAtTime(205*r*p[0]*0.86,time+dur);
+    o.connect(mix); o.start(time); o.stop(time+dur+0.05);
+  });
+  noise(time,0.06,filter('bandpass',2100,1,gainEnv(time,0.22*v,0.055,d)));
+}
 /* Every sound the studio can put on a track.
    gm = General MIDI drum note (exported on the drum channel). pitched = follows the project key and has a piano roll.
    base = MIDI note of scale step 0. kit = which kick recipe it uses. defLen = default note length in steps. */
@@ -600,11 +693,15 @@ var INSTR=[
  {id:'jkick',name:'Jump kick',group:'Hard drums',fn:hardKick,kit:2,gm:36,pitched:true,base:33},
  {id:'tkick',name:'Tekk kick',group:'Hard drums',fn:hardKick,kit:3,gm:36,pitched:true,base:31},
  {id:'ckick',name:'Core kick',group:'Hard drums',fn:hardKick,kit:4,gm:36,pitched:true,base:33},
+ {id:'pkick',name:'Piep kick',group:'Hard drums',fn:piepKick,gm:36,pitched:true,base:45},
  {id:'hsnare',name:'Hard snare',group:'Hard drums',fn:hardSnare,gm:38},
+ {id:'bsnare',name:'Break snare',group:'Hard drums',fn:breakSnare,gm:40},
  {id:'crash',name:'Crash',group:'Hard drums',fn:crash,gm:49},
  {id:'rbass',name:'Reverse bass',group:'Bass',fn:revBass,kit:1,pitched:true,base:33,prog:38},
  {id:'tbass',name:'Tekk bass',group:'Bass',fn:revBass,kit:3,pitched:true,base:31,prog:38},
  {id:'sub',name:'Sub bass',group:'Bass',fn:sub,pitched:true,base:33,prog:38,defLen:2},
+ {id:'zaag',name:'Zaag bass',group:'Bass',fn:zaag,pitched:true,base:33,prog:38,defLen:2},
+ {id:'wob',name:'Wobble bass',group:'Bass',fn:wob,pitched:true,base:33,prog:38,defLen:4},
  {id:'screech',name:'Screech lead',group:'Synths',fn:lead,pitched:true,base:57,prog:81,defLen:2},
  {id:'saw',name:'Supersaw',group:'Synths',fn:supersaw,pitched:true,base:57,prog:81,defLen:2},
  {id:'pluck',name:'Pluck',group:'Synths',fn:pluck,pitched:true,base:57,prog:80},
@@ -615,12 +712,15 @@ var INSTR=[
  {id:'choir',name:'Dark choir',group:'Synths',fn:choir,pitched:true,chord:true,base:57,prog:52,defLen:16},
  {id:'yoi',name:'Yoi lead',group:'Synths',fn:yoi,pitched:true,base:57,prog:85,defLen:2},
  {id:'metal',name:'Metal bleep',group:'Synths',fn:metal,pitched:true,base:69,prog:14},
+ {id:'horn',name:'Air horn',group:'Synths',fn:horn,pitched:true,base:57,prog:61,defLen:4},
  {id:'zap',name:'Zap',group:'Effects',fn:zap},
  {id:'riser',name:'Riser',group:'Effects',fn:riser,defLen:16},
  {id:'fall',name:'Fall',group:'Effects',fn:fall,defLen:16},
  {id:'boom',name:'Boom',group:'Effects',fn:boom,gm:35},
  {id:'siren',name:'Siren',group:'Effects',fn:siren,pitched:true,base:69,prog:81,defLen:16},
- {id:'scratch',name:'Scratch',group:'Effects',fn:scratch,defLen:2}
+ {id:'scratch',name:'Scratch',group:'Effects',fn:scratch,defLen:2},
+ {id:'glitch',name:'Glitch burst',group:'Effects',fn:glitch,pitched:true,base:57,prog:80,defLen:2},
+ {id:'shout',name:'Hey shout',group:'Effects',fn:shout}
 ],BY={};
 INSTR.forEach(function(I){ BY[I.id]=I; });
 T.INSTR=INSTR; T.inst=function(id){ return BY[id]||BY.kick; };
@@ -1353,6 +1453,185 @@ function kurzschluss(){
       {name:'OVERLOAD',pat:'surge',rep:4,speed:130,shift:3},
       {name:'BLACKOUT',pat:'sag',rep:1,speed:50,shift:-7,fx:'close'}]};
 }
+/* a drum row whose hits play notes: the hits of `v` take the scale steps in `degs` in turn, going round again if the list runs out */
+function kn(v,degs){ var n=[],j=0,i; for(i=0;i<v.length;i++) n.push(v.charAt(i)==='.'?0:degs[j++%degs.length]); return {v:v,n:n}; }
+/* one pattern played once per entry, each time at its own speed and shift: a tempo that climbs, falls or lurches */
+function ramp(name,pat,speeds,shifts,extra){
+  return speeds.map(function(sp,i){ var q={name:name,pat:pat,rep:1,speed:sp,shift:shifts?shifts[i]:0},k; for(k in extra||{}) q[k]=extra[k]; return q; });
+}
+
+/* Uptempo, G phrygian, 215 BPM. The kick is the lead: a piep kick hammers a broken three-three-two rhythm and then plays the tune
+   itself, with a zaag bass snarling in the gaps. Kick rolls run at double speed until they blur into a buzz, a fake drop is nothing
+   but a crowd and an air horn at half speed, and the sledge part drops the whole thing to 107 BPM before it climbs to 258 */
+function presslufthammer(){
+  var hook=[[0,7,3,2],[3,7,1],[4,11,3,2],[8,12,2],[10,11,2],[12,9,4,2],
+            [16,7,3,2],[19,7,1],[20,11,3,2],[24,12,2],[26,13,2],[28,11,4,2],
+            [32,7,3,2],[35,7,1],[36,11,3,2],[40,12,2],[42,11,2],[44,9,4,2],
+            [48,8,3,2],[51,8,1],[52,12,3,2],[56,11,2],[58,9,2],[60,8,2],[62,7,2,2]],
+      sad=[[0,7,6],[6,9,2],[8,11,6],[14,9,2],[16,12,6],[22,11,2],[24,9,8],[32,13,6],[38,12,2],[40,11,6],[46,9,2],[48,8,8],[56,7,8]],
+      pad=[[0,0,16],[16,-2,16],[32,-1,16],[48,1,16]],
+      drums=['kick','bass','clap','hat','open'];
+  return {name:'PRESSLUFTHAMMER',bpm:215,key:-2,scale:'phrygian',crunch:48,vol:50,
+    tracks:[
+      {id:'kick',inst:'pkick',name:'KICK'},{id:'bass',inst:'zaag',name:'ZAAG',lv:74},{id:'clap',inst:'clap',name:'CLAP',lv:75,verb:12},
+      {id:'snare',inst:'hsnare',name:'SNARE',lv:80,verb:18},{id:'hat',inst:'hat',name:'HAT',lv:48,pan:18},{id:'open',inst:'open',name:'OPEN',lv:58,pan:-18},
+      {id:'yoi',inst:'yoi',name:'YOI',lv:58,verb:18,echo:16},{id:'horn',inst:'horn',name:'HORN',lv:58,verb:20},
+      {id:'scr',inst:'scream',name:'SCREAM',tn:12,lv:40,pan:-20,verb:18},{id:'glitch',inst:'glitch',name:'GLITCH',lv:50,pan:25,echo:20},
+      {id:'shout',inst:'shout',name:'HEY',lv:72,verb:15},{id:'pad',inst:'choir',name:'CHOIR',lv:80,verb:45,tone:-30},
+      {id:'saw',inst:'saw',name:'SAW',lv:62,verb:30,echo:20},{id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},
+      {id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'ham',name:'HAMMER',bars:2,rows:{
+        kick:kn(J('X..x..x.X..x..x.','X..x..x.X.xxXXXX'),[0,0,0,0,0,1, 0,0,0,4,3,3,2,2,1,1]),
+        bass:{notes:[[1,0,2],[4,0,2],[9,0,2],[12,0,2],[17,0,2],[20,1,2]]},
+        clap:rpt(CL,2),hat:rpt(H16,2),open:rpt(OFF,2),shout:J('....x.......x...','....x.......x.x.'),
+        horn:{notes:[[24,7,2],[26,7,2],[28,7,4,2]]},glitch:{notes:[[14,7,2]]},boom:'X'+rpt('.',31)}},
+      {id:'tune',name:'TUNE',bars:4,rows:{
+        kick:kn(J('X.x.X.x.X.x.X.x.','X.x.X.x.X.x.X.x.','X.x.X.x.X.x.X.x.','X.x.X.x.X.xxXxXX'),
+                [0,0,4,0,5,4,2,0, 0,0,4,0,5,4,6,4, 0,0,4,0,5,4,2,0, 1,1,5,1,4,4,2,2,1,1,0]),
+        bass:{notes:cyc(48,4,1,[0],1).concat(cyc(56,4,49,[1],1))},
+        clap:rpt(CL,4),hat:rpt(H16,4),open:rpt(OFF,4),yoi:{notes:hook},shout:rpt('....x.......x...',4),
+        horn:{notes:[[28,7,4],[60,7,4,2]]},scr:{notes:[[0,4,14,2],[16,5,14],[32,4,14,2],[48,1,12]]},
+        glitch:{notes:[[30,7,2],[62,7,2]]},boom:'X'+rpt('.',63),crash:'x'+rpt('.',63)}},
+      {id:'roll',name:'ROLL',bars:1,rows:{kick:kn('XXXXXXXXXXXXXXXX',[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]),glitch:{notes:[[0,7,16]]},snare:'x.x.x.x.x.x.x.x.'}},
+      {id:'brk',name:'BREAK',bars:4,rows:{pad:{notes:pad},saw:{notes:sad},kick:kn(rpt('X.......X.......',4),[0,0,-2,-2,-1,-1,1,1]),shout:rpt(E16,3)+'............x.x.'}},
+      {id:'call',name:'CALL',bars:1,rows:{shout:'x...x...x.......',horn:{notes:[[8,7,8,2]]},glitch:{notes:[[6,7,2]]}}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:kn(J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXX....'),[0,0,0,0,0,0,0,0, 0,0,1,1,2,2,3,3, 4,4,4,5,5,5,6,6,6,7,7,7]),
+        snare:J(ROLL,'xxxxxxxxXXXX....'),riser:{notes:[[0,0,60]]},saw:{notes:sad.filter(function(n){ return n[0]<32; })},
+        horn:{notes:[[32,7,8],[40,9,8],[48,11,6],[54,13,6]]},shout:J(E16,E16,'x...x...x...x...','x.x.x.x.x.x.....'),pad:{notes:[[0,0,16],[16,-2,16],[32,-1,16],[48,1,12]]}}}],
+    song:[
+      {name:'INTRO',pat:'ham',rep:2,fx:'open',only:['kick','hat','open','glitch']},
+      {name:'HAMMER',pat:'ham',rep:4,only:drums.concat('shout','glitch')},
+      {name:'ROLL',pat:'roll',rep:1,speed:200},
+      {name:'TUNE',pat:'tune',rep:2,only:drums.concat('yoi','shout')},
+      {name:'BREAK',pat:'brk',rep:1,only:['pad','saw']},
+      {name:'BREAK ON',pat:'brk',rep:1,fx:'pump',only:['pad','saw','kick','shout']},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'CALL',pat:'call',rep:1,speed:50,shift:-5},
+      {name:'DROP',pat:'tune',rep:2},
+      {name:'ROLL',pat:'roll',rep:2,speed:200,shift:2},
+      {name:'SLEDGE',pat:'ham',rep:2,speed:50,shift:-5,only:['kick','bass','clap','shout','horn','boom']},
+      {name:'HAMMER 2',pat:'ham',rep:4,speed:110,shift:2,off:{boom:true}},
+      {name:'CHOP',pat:'tune',rep:1,fx:'gate',shift:2,off:{scr:true,boom:true}},
+      {name:'FULL',pat:'tune',rep:2,speed:120,shift:3,off:{boom:true}}
+    ].concat(ramp('EXTRATONE','roll',[150,170,185,200],[3,5,7,8]),[
+      {name:'OUTRO',pat:'ham',rep:1,speed:50,shift:-7,fx:'close',only:['kick','bass','horn','shout']}])};
+}
+/* Acid tekk through a wormhole, B phrygian, 180 BPM. A half-time stretch where a wobble bass takes over, then the wormhole itself:
+   one bar played eight times, each faster and a semitone higher, from 108 to 234 BPM, straight into the drop at the far end.
+   A drum break tears through at one and a half times speed, and at the end the wormhole closes: the same bar slowing to a stop */
+function wurmloch(){
+  var riff=al(0,'X.xsX.xxX.xsXxSs',[0,7,0,0,1,0,0,7,0,5,4,2,1]).concat(al(16,'XxxsX.xxXsXsXxSs',[0,7,0,3,1,0,7,8,7,5,4,2,1,0,1])),
+      fast=al(0,'XxxxXxxsXxxxXxSs',[0,7,0,7,2,9,2,0,0,7,0,7,4,11,7,5]).concat(al(16,'XxxxXxxsXxxxSsSs',[0,7,0,7,2,9,2,0,5,12,5,12,7,5,2,1])),
+      high=[[2,14,2,2],[6,13,2],[10,11,3,2],[18,14,2,2],[22,13,2],[24,11,2],[26,9,2,2],[28,8,2],[30,7,2,2]],
+      spiral=al(0,'XxxxXxxxXxxxXxSs',[0,2,4,7,2,4,7,9,4,7,9,11,7,9,11,14]),
+      wobA=[[0,0,6,1],[6,0,2,2],[8,3,4,3],[12,1,4,2],[16,0,6,1],[22,0,2,2],[24,5,4,1],[28,4,4,2]],
+      climb=[],i,drums=['kick','bass','hat','open','clap','tom'],close=ramp('COLLAPSE','spiral',[130,110,90,75,60,50],[2,0,-2,-4,-6,-7]);
+  for(i=0;i<32;i++) climb.push([32+i,i>=24?7:i>=16?(i%2?7:0):(i%4===3?7:0),1,i%4===0?2:1]);
+  close[5].fx='close';
+  return {name:'WURMLOCH',bpm:180,key:2,scale:'phrygian',crunch:40,vol:50,
+    tracks:[
+      {id:'kick',inst:'tkick',name:'KICK',tn:2},{id:'bass',inst:'tbass',name:'BASS',tn:2,lv:100,drive:15},{id:'wob',inst:'wob',name:'WOBBLE',lv:66},
+      {id:'acid',inst:'acid',name:'ACID',lv:82,echo:18,drive:25},{id:'acid2',inst:'acid',name:'ACID HIGH',tn:12,lv:60,pan:25,echo:25},
+      {id:'scr',inst:'scream',name:'SCREAM',tn:12,lv:42,pan:-18,verb:18,echo:18},{id:'glitch',inst:'glitch',name:'GLITCH',lv:48,pan:-25,echo:22},
+      {id:'bsn',inst:'bsnare',name:'BREAK SNARE',lv:80,verb:10},{id:'hat',inst:'hat',name:'HAT',lv:50,pan:18},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18},
+      {id:'clap',inst:'clap',name:'CLAP',lv:78,verb:12},{id:'tom',inst:'tom',name:'TOM',lv:30,pan:-12,verb:15},
+      {id:'zap',inst:'zap',name:'ZAP',lv:45,pan:35,echo:30},{id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},
+      {id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'main',name:'TUNNEL',bars:2,rows:{kick:J(F4,'X...X...X..xX.xx'),bass:J(OFF,'..x...x.........'),acid:{notes:riff},
+        hat:rpt(H16,2),open:rpt(OFF,2),clap:rpt(CL,2),tom:TOMA,zap:J(E16,'..........x...x.'),glitch:{notes:[[30,7,2]]},boom:'X'+rpt('.',31)}},
+      {id:'wobble',name:'WOBBLE',bars:2,rows:{kick:J('X.........X.....','X.........X.X...'),bsn:J('........X.......','........X.....oo'),
+        wob:{notes:wobA},acid2:{notes:[[4,14,2,2],[13,11,2],[20,14,2,2],[26,13,2],[29,11,2,2]]},hat:rpt(H8,2),
+        glitch:{notes:[[14,7,2],[30,9,2]]},zap:rpt('......x.........',2)}},
+      {id:'spiral',name:'WORMHOLE',bars:1,rows:{kick:F4,bass:OFF,acid:{notes:spiral},hat:H16,bsn:'....x.......x...',glitch:{notes:[[14,14,2]]}}},
+      {id:'amen',name:'BREAKS',bars:2,rows:{kick:J('X.X.......XX....','X.X.......X.....'),bsn:J('....X..o.o..X..o','....X..o.o....X.'),hat:rpt(H8,2),
+        acid:{notes:riff},acid2:{notes:high},zap:J(E16,'..............x.')}},
+      {id:'drop',name:'FAR SIDE',bars:2,rows:{kick:J('X...X...X..xX.xx','X...X.x.X.xxXxXx'),bass:J(OFF,'..x...x.........'),acid:{notes:fast},acid2:{notes:high},
+        scr:{notes:[[0,14,9,2],[8,13,4],[12,11,5,2],[16,14,9,2],[24,11,4],[28,9,4,2]]},hat:rpt(H16,2),open:rpt(OFF,2),clap:rpt(CL,2),tom:TOMA,
+        glitch:{notes:[[30,7,2]]},boom:'X'+rpt('.',31),crash:'x'+rpt('.',31)}},
+      {id:'gap',name:'GAP',bars:1,rows:{glitch:{notes:[[0,7,10],[12,14,4]]},zap:'x...x...x.x.x.xx',bsn:'............xxXX'}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:{v:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXXXXXX'),n:barN([0,0,0]).concat([0,0,0,0,2,2,2,2,4,4,4,4,7,7,7,7])},
+        bsn:J(ROLL,'xxxxxxxxXXXXXXXX'),riser:{notes:[[0,0,64]]},acid:{notes:riff.concat(climb)},
+        scr:{notes:[[32,7,8],[40,9,8],[48,11,8],[56,14,8]]},wob:{notes:[[0,0,16,3],[16,0,16,1],[32,0,16,2]]}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:2,fx:'open',only:['kick','hat','acid','glitch']},
+      {name:'TUNNEL',pat:'main',rep:4,only:drums.concat('acid','zap','glitch')},
+      {name:'GAP',pat:'gap',rep:1},
+      {name:'WOBBLE',pat:'wobble',rep:4}
+    ].concat(ramp('WORMHOLE','spiral',[60,70,80,90,100,110,120,130],[-5,-4,-3,-2,-1,0,1,2]),[
+      {name:'FAR SIDE',pat:'drop',rep:4,speed:130,shift:2},
+      {name:'BREAKS',pat:'amen',rep:2},
+      {name:'FASTER',pat:'amen',rep:2,speed:150,shift:2},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'GAP',pat:'gap',rep:1},
+      {name:'FAR SIDE 2',pat:'drop',rep:4,speed:120,shift:1,off:{boom:true}},
+      {name:'WOBBLE 2',pat:'wobble',rep:2,shift:1}],close)};
+}
+/* Frenchcore with a wrecking ball, C minor, 205 BPM. A big supersaw tune over hoover stabs and a crowd shouting on the beat.
+   The swing: bars take turns at 70 and 140 percent speed, winding back and smashing in, four times over. Then a zaag bass plays
+   between the kicks, a drum break runs at 307 BPM, and every drop comes back a semitone higher than the one before */
+function abrissbirne(){
+  var ch=[0,-2,2,-1],roots=barN(ch),stabs=[],pad=ch.map(function(c,i){ return [i*16,c,16]; }),
+      mel=[[0,7,3,2],[3,9,3],[6,11,2],[8,11,3,2],[11,9,3],[14,7,2],
+           [16,12,3,2],[19,11,3],[22,9,2],[24,9,3,2],[27,11,3],[30,12,2],
+           [32,13,3,2],[35,11,3],[38,9,2],[40,11,3,2],[43,13,3],[46,14,2],
+           [48,13,3,2],[51,12,3],[54,11,2],[56,10,2,2],[58,11,2],[60,13,2,2],[62,11,2]],
+      drums=['kick','bass','clap','hat','open'],swing=[];
+  ch.forEach(function(c,i){ stabs.push([i*16+2,c+7,2,2],[i*16+6,c+9,2],[i*16+10,c+11,2,2],[i*16+14,c+9,2]); });
+  [0,0,1,1].forEach(function(sh){ swing.push({name:'WIND UP',pat:'wind',rep:1,speed:70,shift:sh},{name:'IMPACT',pat:'hit',rep:1,speed:140,shift:sh}); });
+  return {name:'ABRISSBIRNE',bpm:205,key:3,scale:'minor',crunch:45,vol:50,
+    tracks:[
+      {id:'kick',inst:'ckick',name:'KICK'},{id:'bass',inst:'rbass',name:'BASS',lv:85},{id:'zaag',inst:'zaag',name:'ZAAG',lv:66},
+      {id:'hoov',inst:'hoover',name:'HOOVER',lv:62,pan:-12,verb:18},{id:'saw',inst:'saw',name:'SAW',lv:150,verb:28,echo:18},
+      {id:'horn',inst:'horn',name:'HORN',lv:56,verb:20},{id:'shout',inst:'shout',name:'HEY',lv:72,verb:15},
+      {id:'bsn',inst:'bsnare',name:'BREAK SNARE',lv:80,verb:10},{id:'clap',inst:'clap',name:'CLAP',lv:78,verb:12},
+      {id:'hat',inst:'hat',name:'HAT',lv:48,pan:18},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18},
+      {id:'glitch',inst:'glitch',name:'GLITCH',lv:48,pan:25,echo:22},{id:'pad',inst:'choir',name:'CHOIR',lv:62,verb:45,tone:-30},
+      {id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},{id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'main',name:'MAIN',bars:4,rows:{
+        kick:{v:J(F4,F4,F4,'X...X...X.x.XxXx'),n:roots},bass:{v:J(OFF,OFF,OFF,'..x...x.........'),n:roots},
+        clap:rpt(CL,4),hat:rpt(H16,4),open:rpt(OFF,4),saw:{notes:mel},hoov:{notes:stabs},pad:{notes:pad},shout:rpt('....x.......x...',4),
+        horn:{notes:[[60,7,4,2]]},boom:'X'+rpt('.',63),crash:'x'+rpt('.',63)}},
+      {id:'zg',name:'ZAAG',bars:2,rows:{
+        kick:J(F4,'X...X.x.X..xX.xx'),zaag:{notes:[[1,0,3,2],[5,0,3],[9,2,3,2],[13,1,3],[17,0,3,2],[21,3,1],[23,4,1],[25,6,2,2],[29,7,1]]},
+        hoov:{notes:[[2,7,2,2],[6,7,2],[10,9,2,2],[14,8,2],[18,7,2,2],[22,11,2],[26,9,2,2],[30,7,2]]},
+        clap:rpt(CL,2),hat:rpt(H16,2),open:rpt(OFF,2),shout:J('....x.......x...','....x.......x.x.'),
+        horn:{notes:[[24,7,2],[26,7,2],[28,7,4,2]]},glitch:{notes:[[14,7,2]]},boom:'X'+rpt('.',31)}},
+      {id:'brk',name:'BREAKCORE',bars:2,rows:{
+        kick:J('X.X.......XX....','X.X.......X.....'),bsn:J('....X..o.o..X..o','....X..o.o....X.'),hat:rpt(H8,2),
+        hoov:{notes:[[0,7,2,2],[3,7,2],[6,9,2],[10,11,2,2],[16,7,2,2],[19,7,2],[22,13,2],[26,11,2,2],[29,9,2]]},
+        shout:J(E16,'..............x.'),glitch:{notes:[[12,7,4],[28,14,4]]}}},
+      {id:'wind',name:'WIND UP',bars:1,rows:{kick:kn('X.......X.......',[0,0]),horn:{notes:[[0,7,14,2]]},shout:'....x.......x...',riser:{notes:[[0,0,16]]},pad:{notes:[[0,0,16]]}}},
+      {id:'hit',name:'IMPACT',bars:1,rows:{
+        kick:kn('X.X.X.X.XxXxXXXX',[0,0,0,0,2,2,4,4,6,6,7,7]),bass:'.x.x.x.x........',
+        hoov:{notes:al(0,'X.X.X.X.XxXxXxXx',[7,9,11,14,14,13,11,9,8,7,6,4])},bsn:'....X.......X.XX',glitch:{notes:[[0,7,4]]},boom:'X'+rpt('.',15),crash:'x'+rpt('.',15)}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:{v:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXX....'),n:barN([0,-2,2]).concat([-1,-1,-1,-1,0,0,0,0,2,2,2,2,4,4,4,4])},
+        bsn:J(ROLL,'xxxxxxxxXXXX....'),riser:{notes:[[0,0,60]]},
+        saw:{notes:mel.filter(function(n){ return n[0]<32; }).concat([[32,13,8],[40,14,8],[48,13,6],[54,14,6]])},
+        pad:{notes:[[0,0,16],[16,-2,16],[32,2,16],[48,-1,12]]},shout:J(E16,E16,'x...x...x...x...','x.x.x.x.x.x.....'),horn:{notes:[[56,7,4,2]]}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:1,fx:'open',only:['kick','hat','open','hoov']},
+      {name:'GROOVE',pat:'main',rep:1,only:drums.concat('hoov','shout')},
+      {name:'BREAK',pat:'main',rep:2,only:['pad','saw']},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'DROP',pat:'main',rep:2}
+    ].concat(swing,[
+      {name:'ZAAG',pat:'zg',rep:4,shift:1},
+      {name:'BREAKCORE',pat:'brk',rep:2,shift:1},
+      {name:'FASTER',pat:'brk',rep:2,speed:150,shift:1},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin',shift:2},
+      {name:'DROP 2',pat:'main',rep:2,speed:110,shift:2,off:{boom:true}},
+      {name:'CHOP',pat:'main',rep:1,speed:110,shift:2,fx:'gate',off:{pad:true,boom:true}},
+      {name:'LAST',pat:'main',rep:2,speed:120,shift:3,off:{boom:true}},
+      {name:'WIND UP',pat:'wind',rep:1,speed:60,shift:3},
+      {name:'IMPACT',pat:'hit',rep:1,speed:160,shift:3},
+      {name:'STOPPED',pat:'wind',rep:1,speed:50,shift:-2,fx:'close'}])};
+}
 /* raw = the compact form as written above, for checking; make() returns a project ready to open */
 var DEMOS=[
   {id:'first-drop',name:'First Drop',about:'Hardstyle, 150 BPM. A short arrangement to learn from: intro, break, build, drop, outro.',make:function(){ return T.starterProject(); }},
@@ -1364,7 +1643,10 @@ var DEMOS=[
   {id:'drehwurm',name:'Drehwurm',about:'Spinning acid tekk, 176 BPM. Three acid lines turn at different speeds and drift round each other, then lock together for the drop.',raw:drehwurm},
   {id:'schleudergang',name:'Schleudergang',about:'Acid tekk that spins up, 170 to 221 BPM. Every stage is faster and a semitone higher, with a half-speed doom break in the middle.',raw:schleudergang},
   {id:'alarmstufe-rot',name:'Alarmstufe Rot',about:'Red-alert frenchcore, 200 BPM. A yoi hook over a metal alarm and a siren, a chopped drop, and a meltdown at 230.',raw:alarmstufeRot},
-  {id:'kurzschluss',name:'Kurzschluss',about:'Glitch acid tekk, 160 BPM. One-bar bursts at double speed, a half-speed sag, then surges that climb to 208.',raw:kurzschluss}
+  {id:'kurzschluss',name:'Kurzschluss',about:'Glitch acid tekk, 160 BPM. One-bar bursts at double speed, a half-speed sag, then surges that climb to 208.',raw:kurzschluss},
+  {id:'presslufthammer',name:'Presslufthammer',about:'Uptempo, 215 BPM. The kick plays the tune, with a zaag bass in the gaps, kick rolls that blur into a buzz, a fake drop and a half-speed sledge.',raw:presslufthammer},
+  {id:'wurmloch',name:'Wurmloch',about:'Acid tekk through a wormhole, 180 BPM. A half-time wobble bass, then one bar played ever faster and higher into the drop, and a drum break at 270.',raw:wurmloch},
+  {id:'abrissbirne',name:'Abrissbirne',about:'Wrecking-ball frenchcore, 205 BPM. A big supersaw tune, bars that wind back and smash in, a zaag bass, breakcore at 307 and every drop a semitone higher.',raw:abrissbirne}
 ];
 DEMOS.forEach(function(d){ if(!d.make) d.make=function(){ return T.normProject(d.raw()); }; });
 T.DEMOS=DEMOS;

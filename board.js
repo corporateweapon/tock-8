@@ -41,7 +41,7 @@ function noteName(m){ return NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1); }
 function sprite(w,h){ var s=document.createElement('canvas'); s.width=Math.max(1,Math.ceil(w*k*dpr)); s.height=Math.max(1,Math.ceil(h*k*dpr)); var c=s.getContext('2d'); c.scale(k*dpr,k*dpr); return {cv:s,c:c}; }
 function hueOf(t){ var gr=T.inst(t.inst).group; return gr==='Bass'?C.tang:gr==='Synths'?C.mint:gr==='Effects'?C.violet:C.bone; }
 function isKick(t){ return /kick$/.test(t.inst); }
-function held(I){ return I.group==='Synths'||I.group==='Bass'||I.id==='riser'||I.id==='fall'||I.id==='siren'||I.id==='scratch'; }
+function held(I){ return I.group==='Synths'||I.group==='Bass'||I.id==='riser'||I.id==='fall'||I.id==='siren'||I.id==='scratch'||I.id==='glitch'; }
 /* seconds per step: parts can run at their own speed, so ask the step that is playing */
 function SD(){ return (cur&&cur.sd)||T.stepSec(P); }
 function sdOf(sec){ return T.secSd?T.secSd(P,sec):T.stepSec(P); }
