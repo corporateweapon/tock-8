@@ -244,7 +244,8 @@ button{font:inherit;color:inherit;border:0;padding:0;margin:0;background:none;cu
 .fab .ico-play{border-left-width:16px;border-top-width:10px;border-bottom-width:10px;margin-left:4px}
 .playing .fab .ico-play{display:none}
 .playing .fab .ico-stop{display:block}
-@media (hover:none){ .note.desk{display:none} }
+a.key{text-decoration:none}
+@media (hover:none){ .note.desk,.big-only{display:none} }
 
 @media (max-width:1180px){
   .top{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);grid-template-areas:"brand lcd" "knobs side"}
@@ -275,6 +276,7 @@ button{font:inherit;color:inherit;border:0;padding:0;margin:0;background:none;cu
   .key{padding:0 9px}
   .card{padding-left:40px;position:fixed;top:calc(env(safe-area-inset-top) + 10px);max-height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px);transform:translateX(-50%)}
   .fab{display:grid}
+  .big-only{display:none}
   body{justify-content:flex-start;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
   :root{--lab:90px;--kh:44px}
 }
@@ -374,6 +376,7 @@ button{font:inherit;color:inherit;border:0;padding:0;margin:0;background:none;cu
           <button class="key k-char" type="button" id="clear">Clear</button>
           <button class="key k-tang" type="button" id="export" aria-haspopup="dialog">Export</button>
           <button class="key k-bone" type="button" id="help" aria-haspopup="dialog" aria-label="Help">?</button>
+          <a class="key k-mint big-only" href="studio.html" title="Open the full studio: songs, more tracks, melodies">Studio</a>
         </div>
         <span class="leg">Tools</span>
       </div>
@@ -418,185 +421,15 @@ button{font:inherit;color:inherit;border:0;padding:0;margin:0;background:none;cu
 <p class="note desk">Click a step to switch it on; <kbd>shift</kbd>-click, right-click or long-press to make it loud or soft. <kbd>space</kbd> plays and stops, <kbd>1</kbd> to <kbd>8</kbd> hit the voices (with Rec on they are written into the beat), <kbd>[</kbd> and <kbd>]</kbd> change beat, <kbd>T</kbd> taps the tempo, <kbd>ctrl</kbd>+<kbd>Z</kbd> undoes. Click a voice name to select it for the two mint knobs. Kit swaps the drum set, Note gives steps a pitch, and <kbd>?</kbd> on the panel explains the rest. Everything is saved on this device; nothing is sent anywhere.</p>
 <noscript><p class="note">Tock-8 needs JavaScript to make sound.</p></noscript>
 
+<script src="engine.js"></script>
 <script>
 (function(){
 'use strict';
 
-var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
-var HARD_TR=[['KICK','Hard kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['BASS','Reverse bass'],['LEAD','Screech lead'],['CRASH','Crash']];
-/* kick recipe per kit: f = pitch of the tail in Hz, top = how high the pitch drop starts, sw = drop time, len = tail length,
-   d1/d2 = distortion before and after the mid boost, mid/midG = where and how hard the mids are pushed, lp = brightness, punch = clean thump on top */
-var KITS=[
- {id:'CLASSIC',tr:TRACKS},
- {id:'HARD',tr:HARD_TR,k:{f:55,top:7,sw:0.11,len:0.36,d1:6,mid:850,midG:10,d2:3,lp:7000,punch:1}},
- {id:'JUMP',tr:HARD_TR,k:{f:55,top:5,sw:0.08,len:0.24,d1:3.5,mid:500,midG:7,d2:2,lp:4500,punch:1.15}},
- {id:'TEKK',tr:HARD_TR,k:{f:49,top:5,sw:0.13,len:0.27,d1:9,mid:320,midG:9,d2:4,lp:3200,punch:0.8}},
- {id:'CORE',tr:HARD_TR,k:{f:55,top:8,sw:0.16,len:0.30,d1:18,mid:1300,midG:8,d2:6,lp:9000,punch:0.7}}
-];
-var MINOR=[0,2,3,5,7,8,10,12];
+/* kits, built-in beats and every sound live in engine.js */
+var T=window.Tock,TRACKS=T.TRACKS,KITS=T.KITS,MINOR=T.MINOR,PRESETS=T.PRESETS,STYLE_ORDER=T.STYLE_ORDER;
 var SLOTS=['A','B','C','D'];
-/* x = hit, X = loud, o = soft. Rows: kick, snare, hat, open hat, clap, tom, rim, bell */
-var PRESETS=[
- {name:'DUSTY',style:'Hip-hop',bpm:92,swing:32,space:14,p:[[
-  'x......x..x.....','....x.......x...','x.x.x.xxx.x.x.x.','..............x.',
-  '............x...','................','..x......x......','................'],[
-  'x......x..x..x..','....x..o....x..o','x.x.x.xxx.x.x...','..............x.',
-  '............x...','.............xx.','..x......x......','................']]},
- {name:'BOOMBAP',style:'Hip-hop',bpm:88,swing:28,space:10,crunch:22,p:[[
-  'X.x.......xx....','....X.......X...','x.xox.x.x.xox.x.','................',
-  '....x.......x...','................','.......o.......o','................'],[
-  'X.x....x..x.....','....X.......X.oo','x.xox.x.x.xox...','..............x.',
-  '....x.......x...','................','.......o........','................']]},
- {name:'TRAP',style:'Hip-hop',bpm:140,swing:0,space:18,tn:[-3,0,2,0,0,0,0,0],p:[[
-  'X.....x......x..','........X.......','x.x.x.xoX.x.xoxo','....x...........',
-  '........X.......','................','...........x..x.','................'],[
-  'X..x..x......xx.','........X.......','xoxox.x.X.xoxoxX','..x.............',
-  '........X.......','..............x.','...........x....','................']]},
- {name:'RAINY',style:'Hip-hop',bpm:76,swing:40,space:38,crunch:30,tn:[-2,-2,-1,0,0,0,0,0],p:[[
-  'X.....x..x......','....x.......x...','x.o.x.o.x.o.x.o.','................',
-  '................','................','....x.......x...','................'],[
-  'X.....x..x...o..','....x.......x..o','x.o.x.o.x.o.x...','..............x.',
-  '................','................','....x.......x...','................']]},
- {name:'CELLAR',style:'House and techno',bpm:124,swing:6,space:16,p:[[
-  'x...x...x...x...','...............x','xx.xxx.xxx.xxx.x','..x...x...x...x.',
-  '....x.......x...','..........x..x..','.......x........','................'],[
-  'x...x...x...x...','............o.xX','xx.xxx.xxx.xxx.x','..x...x...x...x.',
-  '....x.......x...','..........x..x..','.......x........','................']]},
- {name:'BUNKER',style:'House and techno',bpm:132,swing:0,space:24,crunch:18,tn:[-2,0,0,0,0,-4,0,0],p:[[
-  'X...X...X...X...','................','x.oxx.oxx.oxx.ox','..x...x...x...x.',
-  '....x.......x...','......o......o..','...x..x...x..x..','................'],[
-  'X...X...X...X.x.','..............oX','x.oxx.oxx.oxx.ox','..x...x...x...x.',
-  '....x.......x...','......o...o..o..','...x..x...x..x..','................']]},
- {name:'GLITTER',style:'House and techno',bpm:118,swing:0,space:20,p:[[
-  'X...X...X...X...','....X.......X...','xx.oxx.oxx.oxx.o','..x...x...x...x.',
-  '....x.......x...','................','................','................'],[
-  'X...X...X...X...','....X.......X.xx','xx.oxx.oxx.oxx.o','..x...x...x...x.',
-  '....x.......x...','.............xx.','................','x...x...x...x...']]},
- {name:'TWOSTEP',style:'House and techno',bpm:132,swing:24,space:16,p:[[
-  'X.....x...x.....','....X.......X...','x.xx..xxx.xx..xx','..............x.',
-  '....x.......x...','................','.......x.....x..','................']]},
- {name:'ROBOT',style:'Electro',bpm:116,swing:0,space:8,p:[[
-  'x.....x...x..x..','....x.......x...','x.xxx.xxx.xxx.xx','.......x........',
-  '............x...','.............x.x','..x..x..........','..x.x...x.x.....'],[
-  'x.....x...x..x..','....x.......x...','x.xxx.xxx.xxx.xx','.......x.......x',
-  '............x...','........x..x.x.x','..x..x..........','x.x.x...x.x.....']]},
- {name:'NEON',style:'Electro',bpm:126,swing:0,space:12,p:[[
-  'X..x..x...x.x...','....X.......X...','x.x.x.x.x.x.x.x.','................',
-  '....x.......x..x','................','................','x.x.xx.xx.x.xx.x']]},
- {name:'FOUNDRY',style:'Electro',bpm:150,swing:0,space:10,crunch:65,tn:[-1,-3,0,0,0,-5,0,-4],p:[[
-  'X.x.X.x.X.x.X.x.','....X.......X..x','xoxoxoxoxoxoxoxo','................',
-  '....x.......x...','..........x.x.xx','................','..x...x...x...x.']]},
- {name:'POCKET',style:'Breaks',bpm:104,swing:18,space:12,p:[[
-  'X.x.......x..x..','....X..o.o..X..o','x.x.x.x.x.x.x...','..............x.',
-  '................','................','................','................'],[
-  'X.x.......x..x..','....X..o.o..X.oo','x.x.x.x.x.x.x.x.','................',
-  '............x...','.............x.x','................','..x...x...x.....']]},
- {name:'LIQUID',style:'Breaks',bpm:172,swing:0,space:26,p:[[
-  'X.........x.....','....X..o.o..X...','x.x.x.x.x.x.x.x.','................',
-  '................','................','................','................'],[
-  'X.........x..x..','....X..o.o..X.oX','x.x.x.x.x.x.x.x.','......x.........',
-  '................','................','................','................']]},
- {name:'BREAKER',style:'Breaks',bpm:165,swing:0,space:14,crunch:28,tn:[2,3,0,0,0,0,0,0],p:[[
-  'X.x.......xx....','....X..o.o..X..o','x.x.x.x.x.x.x.x.','................',
-  '................','................','................','................'],[
-  'X.x.......x.....','....X..o.o....X.','x.x.x.x.x...x.x.','..........x.....',
-  '................','................','................','................']]},
- {name:'STOMP',style:'Breaks',bpm:80,swing:0,space:32,tn:[-2,-2,0,0,0,-3,0,0],p:[[
-  'X.....x.X.x.....','....X.......X...','x.x.x.x.x.x.x.x.','................',
-  '....x.......x...','................','................','................'],[
-  'X.....x.X.x.....','....X.......X...','x.x.x.x.x.x.....','................',
-  '....x.......x...','x............xxX','................','................']]},
- {name:'DEMBOW',style:'Further afield',bpm:96,swing:0,space:14,p:[[
-  'X...X...X...X...','......x.......x.','x.x.x.x.x.x.x.x.','................',
-  '................','................','...x..x....x..x.','................']]},
- {name:'IPANEMA',style:'Further afield',bpm:120,swing:0,space:22,lv:[80,100,70,100,100,100,110,100],p:[[
-  'X..oX..oX..oX..o','................','xoxoxoxoxoxoxoxo','................',
-  '................','................','x..x..x...x..x..','................']]},
- {name:'LAGOS',style:'Further afield',bpm:108,swing:12,space:16,p:[[
-  'X.....x.x.....x.','................','x.xxx.xxx.xxx.xx','................',
-  '....x.......x...','......x......xx.','..x.x..x..x.x..x','x..x..x...x.x...']]},
- /* hard kits. Rows: kick, snare, hat, open hat, clap, reverse bass, screech lead, crash. n = notes (scale steps 1 to 8) per row */
- {name:'HARDSTYLE',style:'Hard dance',kit:1,bpm:150,swing:0,space:18,crunch:20,lv:[100,90,60,70,85,85,70,60],p:[[
-  'X...X...X...X...','................','.o.o.o.o.o.o.o.o','..x...x...x...x.',
-  '....x.......x...','................','..x..x..x..x.x..','................'],[
-  'X...X...X...X.xx','............xxxX','.o.o.o.o.o.o....','..x...x...x.....',
-  '....x.......x...','................','..x..x..x..x.x..','x...............']],
-  n:[{6:'..1..1..3..5.4..'},{6:'..1..1..3..7.8..'}]},
- {name:'EUPHORIC',style:'Hard dance',kit:1,bpm:150,swing:0,space:34,crunch:10,lv:[100,90,60,65,80,85,75,55],p:[[
-  'X...X...X...X...','................','................','..x...x...x...x.',
-  '....x.......x...','................','x.x.x.x.x.x.x.x.','................'],[
-  'X...X...X...X...','..............xx','................','..x...x...x...x.',
-  '....x.......x...','................','x.x.x.x.x.x.x.x.','x...............']],
-  n:[{6:'1.3.5.8.5.3.5.3.'},{6:'6.8.3.8.7.2.4.2.'}]},
- {name:'RAWSTYLE',style:'Hard dance',kit:1,bpm:155,swing:0,space:12,crunch:48,tn:[-2,0,0,0,0,-2,0,0],lv:[100,90,60,70,75,85,65,60],p:[[
-  'X...X...X..xX.x.','................','................','..x...x...x...x.',
-  '....x.......x...','................','X.......X.......','................'],[
-  'X..xX..xX.x.XxXx','................','................','..x...x...x.....',
-  '....x.......x...','................','X.......X.....x.','x...............']],
-  n:[{0:'1...1...1..31.4.',6:'8.......7.......'},{0:'1..31..31.5.1314',6:'8.......7.....5.'}]},
- {name:'REVERSE',style:'Hard dance',kit:1,bpm:150,swing:0,space:14,crunch:25,lv:[100,90,55,60,85,95,70,60],p:[[
-  'X...X...X...X...','................','.o.o.o.o.o.o.o.o','................',
-  '....x.......x...','..x...x...x...x.','................','................'],[
-  'X...X...X...X...','............x.xX','.o.o.o.o.o.o....','................',
-  '....x.......x...','..x...x...x...x.','................','x...............']],
-  n:[{},{5:'..1...1...3...4.'}]},
- {name:'JUMPSTYLE',style:'Hard dance',kit:2,bpm:145,swing:0,space:12,crunch:22,lv:[100,90,60,70,85,95,65,60],p:[[
-  'X...X...X..xX...','................','x.x.x.x.x.x.x.x.','................',
-  '....x.......x...','..x...x...x...x.','...x..x....x..x.','................'],[
-  'X...X..xX...X.xx','..............xx','x.x.x.x.x.x.x...','................',
-  '....x.......x...','..x...x...x.....','...x..x....x..x.','................']],
-  n:[{6:'...1..3....1..5.'},{6:'...1..3....4..3.'}]},
- {name:'TEKK',style:'Hard dance',kit:3,bpm:170,swing:0,space:10,crunch:30,lv:[100,90,60,70,85,90,65,60],p:[[
-  'X...X...X...X...','................','................','..x...x...x...x.',
-  '....x.......x...','..xx..xx..xx..xx','................','................'],[
-  'X...X...X...X...','............x.xx','................','..x...x...x.....',
-  '....x.......x...','..xx..xx..xx..xx','.......x.......x','................']],
-  n:[{},{5:'..11..11..33..44',6:'.......5.......8'}]},
- {name:'HARDTEKK',style:'Hard dance',kit:3,bpm:180,swing:0,space:10,crunch:45,tn:[-1,0,0,0,0,-1,0,0],lv:[100,90,60,65,85,90,65,60],p:[[
-  'X...X..xX...X.x.','................','................','..x...x...x...x.',
-  '....X.......X...','..x...x...x...x.','x..x..x.x..x..x.','................'],[
-  'X...X..xX...X.x.','................','................','..x...x...x...x.',
-  '....X.......X...','..x...x...x...x.','x..x..x.x..x..x.','................']],
-  n:[{6:'1..1..3.1..1..5.'},{6:'4..4..5.4..4..7.'}]},
- {name:'GABBER',style:'Hard dance',kit:4,bpm:185,swing:0,space:8,crunch:55,lv:[100,90,60,70,80,85,65,60],p:[[
-  'X...X...X...X...','....x.......x...','................','..x...x...x...x.',
-  '................','................','x.....x...x.....','................'],[
-  'X...X...X.x.XxXx','....x.......x...','................','..x...x...x.....',
-  '................','................','x.....x...x.....','x...............']],
-  n:[{6:'1.....3...2.....'},{6:'1.....3...5.....'}]},
- {name:'FRENCHCORE',style:'Hard dance',kit:4,bpm:200,swing:0,space:10,crunch:40,lv:[100,85,55,70,80,95,65,60],p:[[
-  'X...X...X...X...','....x.......x...','o.o.o.o.o.o.o.o.','................',
-  '................','..x...x...x...x.','..x...x...x...x.','................'],[
-  'X...X...X...X...','....x.......x.xx','o.o.o.o.o.o.o...','................',
-  '................','..x...x...x...x.','..x...x...x...x.','................']],
-  n:[{6:'..5...5...6...4.'},{6:'..3...3...4...2.'}]}
-];
-var STYLE_ORDER=['Hard dance','Hip-hop','House and techno','Electro','Breaks','Further afield'];
-var CH={'.':0,x:1,X:2,o:3},VEL=[0,1,1.35,0.42];
-function emptyP(){ var a=[],t; for(t=0;t<8;t++) a.push(new Array(16).fill(0)); return a; }
-function parseP(rows){ return rows.map(function(s){ var r=[],i; for(i=0;i<16;i++) r.push(CH[s.charAt(i)]||0); return r; }); }
-function fill8(v){ return [v,v,v,v,v,v,v,v]; }
-function fromPreset(p){
-  var pats=[],pit=[],i,t,s;
-  for(i=0;i<4;i++){
-    pats.push(p.p[i]?parseP(p.p[i]):emptyP());
-    var n=emptyP(),src=p.n&&p.n[i];
-    if(src) for(t in src) for(s=0;s<16;s++){ var d=+src[t].charAt(s); if(d>=1&&d<=8) n[+t][s]=d-1; }
-    pit.push(n);
-  }
-  return {name:p.name,kit:p.kit||0,bpm:p.bpm,swing:p.swing,space:p.space||0,crunch:p.crunch||0,lv:(p.lv||fill8(100)).slice(),tn:(p.tn||fill8(0)).slice(),pats:pats,pit:pit};
-}
-/* beats saved by older versions have no kit or notes: fill them in */
-function norm(b){
-  b.kit=b.kit|0; if(b.kit<0||b.kit>=KITS.length) b.kit=0;
-  if(!Array.isArray(b.pit)||b.pit.length!==4) b.pit=[emptyP(),emptyP(),emptyP(),emptyP()];
-  return b;
-}
-function okBeat(b){
-  if(!b||typeof b.name!=='string'||!Array.isArray(b.pats)||b.pats.length!==4||!Array.isArray(b.lv)||!Array.isArray(b.tn)) return false;
-  for(var i=0;i<4;i++){ if(!Array.isArray(b.pats[i])||b.pats[i].length!==8) return false; for(var t=0;t<8;t++) if(!Array.isArray(b.pats[i][t])||b.pats[i][t].length!==16) return false; }
-  return true;
-}
+var VEL=T.VEL,emptyP=T.emptyP,fill8=T.fill8,fromPreset=T.fromPreset,norm=T.norm,okBeat=T.okBeat;
 function TR(){ return KITS[S.kit].tr; }
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
 function hasNotes(p){ for(var t=0;t<8;t++) for(var s=0;s<16;s++) if(p[t][s]) return true; return false; }
@@ -667,50 +500,9 @@ function each(sel,fn){ Array.prototype.forEach.call(document.querySelectorAll(se
 var dotEls=document.querySelectorAll('#dots i'),lvlEls=document.querySelectorAll('#lvl i');
 
 /* ---------------- sound: everything is synthesised ---------------- */
-var R=null,live=null,scopeData=null,noiseBuf=null;
-function crunchCurve(amt){
-  var n=1024,c=new Float32Array(n),k=amt/100*28,i,x;
-  for(i=0;i<n;i++){ x=i/(n-1)*2-1; c[i]=(1+k)*x/(1+k*Math.abs(x)); }
-  return c;
-}
-function makeNoise(ac){
-  var len=ac.sampleRate,b=ac.createBuffer(1,len,ac.sampleRate),d=b.getChannelData(0);
-  for(var i=0;i<len;i++) d[i]=Math.random()*2-1; return b;
-}
-function makeRoom(ac){
-  var len=Math.floor(ac.sampleRate*1.7),b=ac.createBuffer(2,len,ac.sampleRate),c,i,d;
-  for(c=0;c<2;c++){ d=b.getChannelData(c); for(i=0;i<len;i++){ var t=i/len; d[i]=(Math.random()*2-1)*Math.pow(1-t,3.2)*(i<ac.sampleRate*0.004?i/(ac.sampleRate*0.004):1); } }
-  return b;
-}
-function buildRig(ac,withScope){
-  var rig={ac:ac,bus:[],openHat:null};
-  rig.master=ac.createGain(); rig.master.gain.value=0.8;
-  rig.shaper=ac.createWaveShaper(); rig.shaper.oversample='2x';
-  rig.trim=ac.createGain();
-  var comp=ac.createDynamicsCompressor();
-  comp.threshold.value=-12; comp.knee.value=8; comp.ratio.value=5; comp.attack.value=0.003; comp.release.value=0.12;
-  rig.conv=ac.createConvolver(); rig.conv.buffer=makeRoom(ac);
-  var hp=ac.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=320;
-  rig.wet=ac.createGain();
-  rig.out=ac.createGain();
-  rig.master.connect(rig.shaper); rig.shaper.connect(rig.trim); rig.trim.connect(comp);
-  rig.trim.connect(hp); hp.connect(rig.conv); rig.conv.connect(rig.wet); rig.wet.connect(comp);
-  if(withScope){
-    rig.analyser=ac.createAnalyser(); rig.analyser.fftSize=1024; rig.analyser.smoothingTimeConstant=0;
-    comp.connect(rig.out); rig.out.connect(rig.analyser); rig.analyser.connect(ac.destination);
-  } else { comp.connect(rig.out); rig.out.connect(ac.destination); }
-  for(var i=0;i<8;i++){ var g=ac.createGain(); g.connect(rig.master); rig.bus.push(g); }
-  applyRig(rig);
-  return rig;
-}
-function applyRig(rig){
-  if(!rig) return;
-  rig.shaper.curve=crunchCurve(S.crunch);
-  rig.trim.gain.value=1/(1+S.crunch/100*0.9);
-  rig.wet.gain.value=S.space/100*0.7;
-  rig.out.gain.value=S.kit?0.55:1; /* the hard kits are dense and distorted: bring them down to sit nearer the classic kit */
-  for(var i=0;i<8;i++) rig.bus[i].gain.value=S.lv[i]/100;
-}
+var R=null,live=null,scopeData=null;
+function buildRig(ac,withScope){ var rig=T.buildRig(ac,withScope); T.applyRig(rig,S); return rig; }
+function applyRig(rig){ T.applyRig(rig,S); }
 function ensureAudio(){
   if(live){ if(live.ac.state!=='running') live.ac.resume(); return true; }
   var AC=window.AudioContext||window.webkitAudioContext;
@@ -718,163 +510,12 @@ function ensureAudio(){
   /* on a phone, keep playing when the ring switch is on silent */
   try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){}
   var ac=new AC();
-  noiseBuf=makeNoise(ac);
   live=buildRig(ac,true); R=live;
   scopeData=new Uint8Array(live.analyser.fftSize);
   if(ac.state==='suspended') ac.resume();
   return true;
 }
-function gainEnv(time,peak,decay,dest){
-  var g=R.ac.createGain();
-  g.gain.setValueAtTime(0.0001,time);
-  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,peak),time+0.002);
-  g.gain.exponentialRampToValueAtTime(0.0001,time+decay);
-  g.connect(dest); return g;
-}
-function osc(type,time,f0,f1,sweep,dur,dest){
-  var o=R.ac.createOscillator(); o.type=type;
-  o.frequency.setValueAtTime(f0,time);
-  if(f1) o.frequency.exponentialRampToValueAtTime(f1,time+sweep);
-  o.connect(dest); o.start(time); o.stop(time+dur+0.05); return o;
-}
-function noise(time,dur,dest){
-  var n=R.ac.createBufferSource(); n.buffer=noiseBuf; n.loop=true;
-  n.connect(dest); n.start(time,Math.random()*0.5); n.stop(time+dur+0.05); return n;
-}
-function filter(type,freq,q,dest){
-  var f=R.ac.createBiquadFilter(); f.type=type; f.frequency.value=Math.min(freq,R.ac.sampleRate*0.45); if(q) f.Q.value=q; f.connect(dest); return f;
-}
-/* cut off a ringing sound (open hat, kick tail, bass, lead) when the next one starts */
-function choke(name,time){
-  var oh=R[name];
-  if(oh){
-    try{
-      if(oh.gain.cancelAndHoldAtTime) oh.gain.cancelAndHoldAtTime(time); else oh.gain.cancelScheduledValues(time);
-      oh.gain.setTargetAtTime(0.0001,time,0.005);
-    }catch(e){}
-    R[name]=null;
-  }
-}
-function chokeOpenHat(time){ choke('openHat',time); }
-var curves={};
-function driveCurve(k){
-  if(curves[k]) return curves[k];
-  var n=2048,c=new Float32Array(n),i,x,t=Math.tanh(k);
-  for(i=0;i<n;i++){ x=i/(n-1)*2-1; c[i]=Math.tanh(k*x)/t; }
-  return (curves[k]=c);
-}
-function shaper(k,dest){ var w=R.ac.createWaveShaper(); w.curve=driveCurve(k); w.oversample='2x'; w.connect(dest); return w; }
-function peaking(freq,gain,q,dest){ var f=R.ac.createBiquadFilter(); f.type='peaking'; f.frequency.value=freq; f.gain.value=gain; f.Q.value=q; f.connect(dest); return f; }
-/* each voice: (time, loudness, pitch ratio, output) */
-var VOICE=[
-  function kick(time,v,r,d){
-    osc('sine',time,165*r,46*r,0.12,0.45,gainEnv(time,v,0.45,d));
-    noise(time,0.02,filter('lowpass',2800,0,gainEnv(time,0.3*v,0.018,d)));
-  },
-  function snare(time,v,r,d){
-    noise(time,0.22,filter('highpass',1500*r,0,gainEnv(time,0.62*v,0.2,d)));
-    osc('triangle',time,215*r,140*r,0.07,0.13,gainEnv(time,0.5*v,0.12,d));
-  },
-  function hat(time,v,r,d){
-    chokeOpenHat(time);
-    noise(time,0.07,filter('bandpass',9800*r,0.9,filter('highpass',7000*r,0,gainEnv(time,0.5*v,0.05,d))));
-  },
-  function open(time,v,r,d){
-    chokeOpenHat(time);
-    var g=gainEnv(time,0.42*v,0.36,d); R.openHat=g;
-    noise(time,0.4,filter('bandpass',9200*r,0.7,filter('highpass',6500*r,0,g)));
-  },
-  function clap(time,v,r,d){
-    var g=R.ac.createGain(),k; g.connect(d);
-    g.gain.setValueAtTime(0.0001,time);
-    for(k=0;k<3;k++){ g.gain.setValueAtTime(0.7*v,time+k*0.011); g.gain.exponentialRampToValueAtTime(0.07*v,time+k*0.011+0.009); }
-    g.gain.setValueAtTime(0.65*v,time+0.033); g.gain.exponentialRampToValueAtTime(0.0001,time+0.26);
-    noise(time,0.3,filter('bandpass',1150*r,0.9,filter('highpass',650*r,0,g)));
-  },
-  function tom(time,v,r,d){
-    osc('sine',time,190*r,92*r,0.22,0.34,gainEnv(time,0.85*v,0.32,d));
-    osc('triangle',time,380*r,184*r,0.1,0.1,gainEnv(time,0.12*v,0.08,d));
-  },
-  function rim(time,v,r,d){
-    osc('square',time,1760*r,0,0,0.03,filter('highpass',900,0,gainEnv(time,0.22*v,0.022,d)));
-    osc('triangle',time,470*r,0,0,0.05,gainEnv(time,0.5*v,0.04,d));
-  },
-  function bell(time,v,r,d){
-    var g=R.ac.createGain(); g.connect(d);
-    g.gain.setValueAtTime(0.0001,time); g.gain.exponentialRampToValueAtTime(0.4*v,time+0.002);
-    g.gain.exponentialRampToValueAtTime(0.14*v,time+0.04); g.gain.exponentialRampToValueAtTime(0.0001,time+0.34);
-    var f=filter('bandpass',1450*r,1.1,g);
-    osc('square',time,562*r,0,0,0.36,f); osc('square',time,845*r,0,0,0.36,f);
-  }
-];
-/* hard dance voices. The kick is a sine that drops in pitch, driven hard, pushed in the mids and driven again, with a clean thump on top */
-function hardKick(time,v,r,d){
-  var K=KITS[S.kit].k,ac=R.ac,f=K.f*r;
-  choke('kickG',time); choke('bassG',time);
-  var amp=ac.createGain(); amp.connect(d);
-  amp.gain.setValueAtTime(0.0001,time);
-  amp.gain.exponentialRampToValueAtTime(0.32*v,time+0.004);
-  amp.gain.setValueAtTime(0.32*v,time+0.03);
-  amp.gain.exponentialRampToValueAtTime(0.22*v,time+K.len*0.7);
-  amp.gain.exponentialRampToValueAtTime(0.0001,time+K.len);
-  R.kickG=amp;
-  var pre=ac.createGain();
-  pre.gain.setValueAtTime(1,time); pre.gain.exponentialRampToValueAtTime(0.5,time+K.len);
-  pre.connect(shaper(K.d1,peaking(K.mid,K.midG,1.1,shaper(K.d2,filter('lowpass',K.lp,0.5,amp)))));
-  var o=ac.createOscillator(); o.type='sine';
-  o.frequency.setValueAtTime(f*K.top,time);
-  o.frequency.exponentialRampToValueAtTime(f*1.6,time+K.sw*0.35);
-  o.frequency.exponentialRampToValueAtTime(f,time+K.sw);
-  o.connect(pre); o.start(time); o.stop(time+K.len+0.05);
-  osc('sine',time,190,52,0.06,0.12,gainEnv(time,0.6*v*K.punch,0.11,d));
-  noise(time,0.02,filter('highpass',1800,0,gainEnv(time,0.25*v*K.punch,0.014,d)));
-}
-function hardSnare(time,v,r,d){
-  noise(time,0.3,filter('highpass',1200*r,0,gainEnv(time,0.58*v,0.26,d)));
-  noise(time,0.12,filter('bandpass',2400*r,1.2,gainEnv(time,0.5*v,0.09,d)));
-  osc('triangle',time,230*r,150*r,0.06,0.14,gainEnv(time,0.55*v,0.13,d));
-}
-/* reverse bass: the kick's tail swelling in, for the off-beat */
-function revBass(time,v,r,d){
-  var K=KITS[S.kit].k,ac=R.ac,f=K.f*r,dur=Math.min(0.24,stepDur()*1.9);
-  choke('bassG',time);
-  var amp=ac.createGain(); amp.connect(d);
-  amp.gain.setValueAtTime(0.02*v,time);
-  amp.gain.exponentialRampToValueAtTime(0.3*v,time+dur*0.82);
-  amp.gain.exponentialRampToValueAtTime(0.0001,time+dur);
-  R.bassG=amp;
-  var o=ac.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(f,time);
-  o.connect(shaper(K.d1,peaking(K.mid*0.7,K.midG*0.7,1,shaper(2,filter('lowpass',1700,0.5,amp)))));
-  o.start(time); o.stop(time+dur+0.05);
-}
-/* screech lead: three detuned saws and a square, driven, with a resonant peak sweeping down */
-function lead(time,v,r,d){
-  var ac=R.ac,f=220*r,dur=Math.min(0.3,stepDur()*1.8),i;
-  choke('leadG',time);
-  var amp=ac.createGain(); amp.connect(d);
-  amp.gain.setValueAtTime(0.0001,time);
-  amp.gain.exponentialRampToValueAtTime(0.17*v,time+0.006);
-  amp.gain.setValueAtTime(0.17*v,time+dur*0.6);
-  amp.gain.exponentialRampToValueAtTime(0.0001,time+dur);
-  R.leadG=amp;
-  var pk=ac.createBiquadFilter(); pk.type='peaking'; pk.Q.value=5; pk.gain.value=15;
-  pk.frequency.setValueAtTime(Math.min(f*10,7500),time); pk.frequency.exponentialRampToValueAtTime(Math.max(f*3,800),time+dur);
-  pk.connect(filter('highpass',170,0,amp));
-  var mix=ac.createGain(); mix.gain.value=0.45; mix.connect(shaper(4,pk));
-  for(i=-1;i<=1;i++){
-    var o=ac.createOscillator(); o.type='sawtooth'; o.detune.value=i*15;
-    o.frequency.setValueAtTime(f*1.05,time); o.frequency.exponentialRampToValueAtTime(f,time+0.035);
-    o.connect(mix); o.start(time); o.stop(time+dur+0.05);
-  }
-  var sq=ac.createOscillator(),sg=ac.createGain(); sq.type='square'; sq.frequency.setValueAtTime(f*2,time); sg.gain.value=0.3;
-  sq.connect(sg); sg.connect(mix); sq.start(time); sq.stop(time+dur+0.05);
-}
-function crash(time,v,r,d){
-  noise(time,1.2,filter('highpass',4200*r,0,gainEnv(time,0.34*v,1.1,d)));
-  noise(time,0.3,filter('bandpass',7000*r,0.8,gainEnv(time,0.3*v,0.25,d)));
-}
-var HARDV=[hardKick,hardSnare,VOICE[2],VOICE[3],VOICE[4],revBass,lead,crash];
-function hit(ti,time,val,deg){ (S.kit?HARDV:VOICE)[ti](time,VEL[val]||1,Math.pow(2,(S.tn[ti]+MINOR[deg|0])/12),R.bus[ti]); }
+function hit(ti,time,val,deg){ T.hit(R,S.kit,ti,time,VEL[val]||1,Math.pow(2,(S.tn[ti]+MINOR[deg|0])/12),R.bus[ti],stepDur()); }
 function audible(ti){ var any=solo.indexOf(true)>=0; return any?solo[ti]:!mute[ti]; }
 
 /* ---------------- clock: look ahead a little, schedule on the audio clock ---------------- */
@@ -1199,14 +840,7 @@ function exportSeq(){
   if(!seq.length) seq=[slot];
   return hasNotes(S.pats[seq[0]])?seq:null;
 }
-function wavBytes(L,Rr,sr){
-  var n=L.length,ab=new ArrayBuffer(44+n*4),dv=new DataView(ab),o=44,k,x;
-  function str(off,s){ for(var j=0;j<s.length;j++) dv.setUint8(off+j,s.charCodeAt(j)); }
-  str(0,'RIFF'); dv.setUint32(4,36+n*4,true); str(8,'WAVEfmt '); dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,2,true);
-  dv.setUint32(24,sr,true); dv.setUint32(28,sr*4,true); dv.setUint16(32,4,true); dv.setUint16(34,16,true); str(36,'data'); dv.setUint32(40,n*4,true);
-  for(k=0;k<n;k++){ x=Math.max(-1,Math.min(1,L[k])); dv.setInt16(o,x*32767,true); x=Math.max(-1,Math.min(1,Rr[k])); dv.setInt16(o+2,x*32767,true); o+=4; }
-  return new Uint8Array(ab);
-}
+var wavBytes=T.wavBytes;
 /* Render the patterns twice and keep the second pass, so tails and reverb wrap round and the file loops without a seam.
    only = one voice on its own (a stem); otherwise whatever is not muted. */
 function renderLoop(seq,only){
@@ -1214,7 +848,7 @@ function renderLoop(seq,only){
   if(!OAC) return Promise.reject(new Error('no offline audio'));
   if(seq.length===1) seq=[seq[0],seq[0]];
   var sr=44100,sd=stepDur(),loopN=Math.round(seq.length*16*sd*sr),ac=new OAC(2,loopN*2,sr);
-  var keepNoise=noiseBuf,keepR=R; noiseBuf=makeNoise(ac); R=buildRig(ac,false);
+  var keepR=R; R=buildRig(ac,false);
   try{
     for(var pass=0;pass<2;pass++) seq.forEach(function(sl,b){
       for(var st=0;st<16;st++){
@@ -1222,31 +856,10 @@ function renderLoop(seq,only){
         for(var ti=0;ti<8;ti++){ var v=S.pats[sl][ti][st]; if(v&&(only===undefined?audible(ti):ti===only)) hit(ti,when,v,S.pit[sl][ti][st]); }
       }
     });
-  } finally { R=keepR; noiseBuf=keepNoise; }
+  } finally { R=keepR; }
   return ac.startRendering().then(function(buf){ return wavBytes(buf.getChannelData(0).subarray(loopN),buf.getChannelData(1).subarray(loopN),sr); });
 }
-var crcT=null;
-function crc32(u8){
-  var n,k,c,i;
-  if(!crcT){ crcT=new Uint32Array(256); for(n=0;n<256;n++){ c=n; for(k=0;k<8;k++) c=c&1?0xEDB88320^(c>>>1):c>>>1; crcT[n]=c>>>0; } }
-  c=-1; for(i=0;i<u8.length;i++) c=crcT[(c^u8[i])&255]^(c>>>8);
-  return (c^-1)>>>0;
-}
-function ascii(s){ var u=new Uint8Array(s.length); for(var i=0;i<s.length;i++) u[i]=s.charCodeAt(i)&127; return u; }
-/* a plain (uncompressed) zip */
-function zip(files){
-  var parts=[],central=[],off=0,csize=0;
-  files.forEach(function(f){
-    var nm=ascii(f.name),crc=crc32(f.data),len=f.data.length,h=new DataView(new ArrayBuffer(30)),c=new DataView(new ArrayBuffer(46));
-    h.setUint32(0,0x04034b50,true); h.setUint16(4,20,true); h.setUint16(12,0x21,true); h.setUint32(14,crc,true); h.setUint32(18,len,true); h.setUint32(22,len,true); h.setUint16(26,nm.length,true);
-    parts.push(h.buffer,nm,f.data);
-    c.setUint32(0,0x02014b50,true); c.setUint16(4,20,true); c.setUint16(6,20,true); c.setUint16(14,0x21,true); c.setUint32(16,crc,true); c.setUint32(20,len,true); c.setUint32(24,len,true); c.setUint16(28,nm.length,true); c.setUint32(42,off,true);
-    central.push(c.buffer,nm); off+=30+nm.length+len; csize+=46+nm.length;
-  });
-  var e=new DataView(new ArrayBuffer(22));
-  e.setUint32(0,0x06054b50,true); e.setUint16(8,files.length,true); e.setUint16(10,files.length,true); e.setUint32(12,csize,true); e.setUint32(16,off,true);
-  return new Blob(parts.concat(central,[e.buffer]),{type:'application/zip'});
-}
+var zip=T.zip;
 /* a standard MIDI file: drums on channel 10; on the hard kits the bass and lead get their own pitched tracks */
 function midiBytes(seq){
   var PPQ=480,ST=120,total=seq.length*16*ST,hard=S.kit>0,
@@ -1285,10 +898,7 @@ function midiBytes(seq){
 }
 /* hand a finished file to the person: the share sheet on a phone, a download on a computer */
 var ready=null;
-function download(blob,name){
-  var url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){ URL.revokeObjectURL(url); },8000);
-}
+var download=T.download;
 function shareable(blob,name){
   try{
     if(!(window.matchMedia&&matchMedia('(pointer:coarse)').matches)||!navigator.canShare) return null;
@@ -1312,28 +922,30 @@ function saveReady(){
   var f=shareable(ready.blob,ready.name);
   if(f) navigator.share({files:[f]}).catch(function(){}); else download(ready.blob,ready.name);
 }
-function doExport(kind){
+/* build one export file: loop, stems, midi or backup. Resolves to {blob, name} */
+function makeFile(kind,progress){
   var seq=exportSeq(),base=fileBase();
-  if(kind==='backup'){
-    deliver(new Blob([JSON.stringify({app:'tock8',version:3,saved:new Date().toISOString(),beats:user,current:S})],{type:'application/json'}),'tock8-backup-'+new Date().toISOString().slice(0,10)+'.json'); return;
-  }
-  if(kind==='restore'){ $('restoreFile').value=''; $('restoreFile').click(); return; }
-  if(!seq){ outLine('This pattern is empty, so there is nothing to export yet.',false); say('NOTHING TO SAVE'); return; }
-  if(kind==='midi'){ deliver(new Blob([midiBytes(seq)],{type:'audio/midi'}),base+'.mid'); return; }
-  outLine('Rendering...',false); say('RENDERING');
-  if(kind==='loop'){
-    renderLoop(seq).then(function(w){ deliver(new Blob([w],{type:'audio/wav'}),base+'-loop.wav'); },function(){ outLine('Rendering failed on this device.',false); say('WAV FAILED'); });
-    return;
-  }
+  if(kind==='backup') return Promise.resolve({blob:new Blob([JSON.stringify({app:'tock8',version:3,saved:new Date().toISOString(),beats:user,current:S})],{type:'application/json'}),name:'tock8-backup-'+new Date().toISOString().slice(0,10)+'.json'});
+  if(!seq) return Promise.reject(new Error('empty'));
+  if(kind==='midi') return Promise.resolve({blob:new Blob([midiBytes(seq)],{type:'audio/midi'}),name:base+'.mid'});
+  if(kind==='loop') return renderLoop(seq).then(function(w){ return {blob:new Blob([w],{type:'audio/wav'}),name:base+'-loop.wav'}; });
+  if(kind!=='stems') return Promise.reject(new Error('unknown export: '+kind));
   /* stems: one render per voice that has notes, one after another */
-  var rows=[],files=[],tr=TR();
+  var rows=[],files=[],tr=TR(),chainP=Promise.resolve();
   for(var ti=0;ti<8;ti++) if(seq.some(function(sl){ return S.pats[sl][ti].some(Boolean); })) rows.push(ti);
-  (function nextRow(i){
-    if(i===rows.length){ deliver(zip(files),base+'-stems.zip'); return; }
-    outLine('Rendering '+(i+1)+' of '+rows.length+'...',false);
-    renderLoop(seq,rows[i]).then(function(w){ files.push({name:base+'-'+(rows[i]+1)+'-'+tr[rows[i]][0].toLowerCase()+'.wav',data:w}); nextRow(i+1); },
-      function(){ outLine('Rendering failed on this device.',false); say('WAV FAILED'); });
-  })(0);
+  rows.forEach(function(ti,i){
+    chainP=chainP.then(function(){ if(progress) progress(i+1,rows.length); return renderLoop(seq,ti); })
+      .then(function(w){ files.push({name:base+'-'+(ti+1)+'-'+tr[ti][0].toLowerCase()+'.wav',data:w}); });
+  });
+  return chainP.then(function(){ return {blob:zip(files),name:base+'-stems.zip'}; });
+}
+function doExport(kind){
+  if(kind==='restore'){ $('restoreFile').value=''; $('restoreFile').click(); return; }
+  if(kind==='loop'||kind==='stems'){ outLine('Rendering...',false); say('RENDERING'); }
+  makeFile(kind,function(i,n){ outLine('Rendering '+i+' of '+n+'...',false); }).then(function(f){ deliver(f.blob,f.name); },function(e){
+    if(e&&e.message==='empty'){ outLine('This pattern is empty, so there is nothing to export yet.',false); say('NOTHING TO SAVE'); }
+    else{ outLine('Rendering failed on this device.',false); say('WAV FAILED'); }
+  });
 }
 function restoreFrom(file){
   var rd=new FileReader();
@@ -1476,6 +1088,34 @@ document.addEventListener('keydown',function(e){
 document.addEventListener('visibilitychange',function(){ if(document.hidden){ saveNow(); if(playing) stop(); } });
 window.addEventListener('pagehide',saveNow);
 window.addEventListener('resize',function(){ drawScope(); });
+
+/* ---------------- script entry point: window.tock8 (see CLAUDE.md) ---------------- */
+window.tock8={
+  page:'pocket',version:T.version,
+  help:function(){ return 'Tock-8 pocket machine. presets() lists built-in beats. loadPreset(name), getBeat(), setBeat(beat) change what is loaded. '+
+    'render("loop"|"stems"|"midi") resolves to {name,type,bytes}; renderAndSave(kind) also writes the file (renders/ folder under tools/serve.py, else a download) and returns measurements. '+
+    'setChain(true) makes exports cover every filled pattern. play(), stop(). Formats are in CLAUDE.md.'; },
+  presets:function(){ return PRESETS.map(function(p){ return {name:p.name,style:p.style,bpm:p.bpm,kit:KITS[p.kit||0].id}; }); },
+  kits:function(){ return KITS.map(function(k){ return {id:k.id,rows:k.tr.map(function(r){ return r[0]; })}; }); },
+  getBeat:function(){ return clone(S); },
+  setBeat:function(b){ var nb=T.readBeat(b); pushUndo(); S=nb; idx=-1; slot=0; playSlot=0; dirty=true; renderAll(); return clone(S); },
+  loadPreset:function(name){
+    for(var i=0;i<PRESETS.length;i++) if(PRESETS[i].name===String(name).toUpperCase()){ loadBeat(i); return clone(S); }
+    throw new Error('no built-in beat called '+name);
+  },
+  setChain:function(on){ chain=!!on; refreshSlots(); refreshLCD(); saveSoon(); return chain; },
+  setPattern:function(n){ setSlot(Math.max(0,Math.min(3,n|0))); return slot; },
+  play:function(){ start(); },stop:function(){ stop(); },
+  render:function(kind){
+    return makeFile(kind||'loop').then(function(f){ return f.blob.arrayBuffer().then(function(ab){ return {name:f.name,type:f.blob.type,bytes:new Uint8Array(ab)}; }); });
+  },
+  renderAndSave:function(kind){
+    return window.tock8.render(kind).then(function(f){
+      return T.saveFile(f.name,f.bytes,f.type).then(function(where){ where.name=f.name; where.size=f.bytes.length; if(/\.wav$/.test(f.name)) where.audio=T.analyse(f.bytes); return where; });
+    });
+  },
+  analyse:T.analyse
+};
 
 restore();
 renderAll();
