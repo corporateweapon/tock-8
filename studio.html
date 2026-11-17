@@ -344,8 +344,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:22px;border:0;border-radiu
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <noscript><p>Tock Studio needs JavaScript.</p></noscript>
 
-<script src="engine.js?v=4.4"></script>
-<script src="board.js?v=4.4"></script>
+<script src="engine.js?v=4.5"></script>
+<script src="board.js?v=4.5"></script>
 <script>
 (function(){
 'use strict';
@@ -913,7 +913,9 @@ var HELP_HTML='<h3>How a song is built</h3><ul>'+
   '<li><b>Live</b> opens a DJ board that plays along with the song. It only shows the song; nothing on it changes your work.</li>'+
   '<li>Each record is a pattern: one ring per track, one turn per bar. A mark sounds as it passes under the glass rail at the top. When the song moves to another pattern the crossfader goes over to the other deck.</li>'+
   '<li>The strips along the bottom are your tracks: the fader drops when a part switches a track off, the pad lights on every hit, and the little window shows the note. The middle shows the part effect turning the Filter knob.</li>'+
-  '<li>On the board: Space plays and stops, click a part in the strip along the top to jump to it, F fills the screen, M turns off the sparks, shake and flashes, Esc comes back here.</li></ul>'+
+  '<li>The record that is playing burns. The flames follow the sound: tall on the side of the record that carries the bass, and jumping on every kick. They turn white when the song is flat out or sped up, cold blue while a build drains the bass, and violet at half speed. The record waiting its turn idles on a small blue flame.</li>'+
+  '<li>Notes arc like lightning from the middle of the record to their ring, drums crackle off the edge, and a change of record sends a bolt across the crossfader.</li>'+
+  '<li>On the board: Space plays and stops, click a part in the strip along the top to jump to it, F fills the screen, M turns off the flames, lightning, sparks, shake and flashes, Esc comes back here.</li></ul>'+
   '<h3>Keeping your work</h3><ul>'+
   '<li>Songs are saved on this computer as you go. Export, Song file gives you a copy to keep elsewhere.</li>'+
   '<li>Ctrl+Z undoes, Ctrl+Y redoes.</li></ul>';

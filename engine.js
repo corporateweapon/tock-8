@@ -3,7 +3,7 @@
    Everything hangs off window.Tock. See CLAUDE.md for the data formats. */
 (function(){
 'use strict';
-var T={version:'4.4'};
+var T={version:'4.5'};
 
 /* ================= kits and built-in beats ================= */
 var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
