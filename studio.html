@@ -339,7 +339,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:22px;border:0;border-radiu
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <noscript><p>Tock Studio needs JavaScript.</p></noscript>
 
-<script src="engine.js"></script>
+<script src="engine.js?v=4.1"></script>
 <script>
 (function(){
 'use strict';
@@ -853,7 +853,7 @@ function closeSheet(){ if(sheet.hidden) return; sheet.hidden=true; sheetKind='';
 function toggleSheet(kind,title,html,from){ if(!sheet.hidden&&sheetKind===kind) closeSheet(); else openSheet(kind,title,typeof html==='function'?html():html,from); }
 function songsHtml(){
   var ids=Object.keys(store.projects),h='<h3>Open a finished song to take apart, or start empty</h3><div class="opts">'+
-    T.DEMOS.map(function(d){ return '<button type="button" class="opt" data-new="demo:'+d.id+'"><b>'+esc(d.name)+'</b><span>'+esc(d.about)+'</span></button>'; }).join('')+
+    (T.DEMOS||[{id:'first-drop',name:'First Drop',about:'Hardstyle, 150 BPM. A short arrangement to learn from.'}]).map(function(d){ return '<button type="button" class="opt" data-new="demo:'+d.id+'"><b>'+esc(d.name)+'</b><span>'+esc(d.about)+'</span></button>'; }).join('')+
     '<button type="button" class="opt" data-new="empty"><b>Empty song</b><span>Six tracks and one pattern with a kick on every beat.</span></button></div>'+
     '<h3>Start from a pocket beat</h3><div class="inline"><select id="beatPick">'+pocketBeats().map(function(b,i){ return '<option value="'+i+'">'+esc(b.label)+'</option>'; }).join('')+'</select><button type="button" class="key k-tang" data-new="beat">Make a song</button></div>'+
     '<h3>Your songs</h3><div class="plist">';
@@ -892,7 +892,7 @@ sheetBody.addEventListener('click',function(e){
   if((k=b.getAttribute('data-new'))){
     if(k==='file'){ $('openFile').value=''; $('openFile').click(); return; }
     saveNow();
-    var np=k.indexOf('demo:')===0?T.demo(k.slice(5)):k==='empty'?T.emptyProject():k==='beat'?T.projectFromBeat(pocketBeats()[+$('beatPick').value].beat):T.normProject(clone(P));
+    var np=k.indexOf('demo:')===0?(T.demo&&T.demo(k.slice(5))||T.starterProject()):k==='empty'?T.emptyProject():k==='beat'?T.projectFromBeat(pocketBeats()[+$('beatPick').value].beat):T.normProject(clone(P));
     if(k==='copy'){ np.id='s'+Date.now().toString(36); np.name=(P.name+' COPY').slice(0,28); }
     setProject(np); saveNow(); closeSheet(); say('NEW SONG'); return;
   }
@@ -955,8 +955,8 @@ window.tock8={
   setProject:function(p){ var np=T.normProject(p); if(p&&p.id===P.id) np.id=P.id; pushUndo(); var keep=undoS,id=np.id; setProject(np,true); undoS=keep; redoS=[]; renderTop(); saveNow(); return clone(P); },
   newFromBeat:function(b){ saveNow(); setProject(T.projectFromBeat(typeof b==='string'?(T.PRESETS.filter(function(p){ return p.name===b.toUpperCase(); })[0]||{}):b)); saveNow(); return clone(P); },
   starter:function(){ saveNow(); setProject(T.starterProject()); saveNow(); return clone(P); },
-  demos:function(){ return T.DEMOS.map(function(d){ return {id:d.id,name:d.name,about:d.about}; }); },
-  demo:function(id){ var np=T.demo(id); if(!np) throw new Error('no demo song called '+id+'; see demos()'); saveNow(); setProject(np); saveNow(); return clone(P); },
+  demos:function(){ return (T.DEMOS||[]).map(function(d){ return {id:d.id,name:d.name,about:d.about}; }); },
+  demo:function(id){ var np=T.demo&&T.demo(id); if(!np) throw new Error('no demo song called '+id+'; see demos()'); saveNow(); setProject(np); saveNow(); return clone(P); },
   select:function(o){ o=o||{}; if(o.part!=null){ ui.sec=Math.max(0,Math.min(P.song.length-1,o.part|0)); ui.pat=curSec().pat; } if(o.pattern) ui.pat=o.pattern; if(o.track) ui.trk=o.track; renderAll(); return {part:ui.sec,pattern:ui.pat,track:ui.trk}; },
   play:function(mode){ startPlay(mode==='pat'?'pat':'song'); },stop:function(){ stopPlay(); },
   render:function(what,o){ return makeFile(what||'song',o); },

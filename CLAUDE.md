@@ -97,6 +97,7 @@ Compact form, as used in `PRESETS` and accepted by `setBeat`:
 - Saved work lives in the browser: `localStorage` keys `tock8.v2` (pocket) and `tock8.studio.v1` (studio). Never change what those keys mean without migrating old data; `Tock.norm` and `Tock.normProject` exist to upgrade older shapes on load.
 - The built-in beat list can grow, but existing names must keep working: saved sessions find their beat by name.
 - The original classic kit and the first 18 beats are liked as they are. Do not retune them. New sounds go in as new voices or kits.
+- Both pages load the engine as `engine.js?v=<version>`. When `engine.js` changes, raise `version` at the top of it and the `?v=` in both script tags, so a browser cannot pair a new page with a stored older engine. Pages should also cope with an older engine (check a new `Tock` member exists before using it).
 - After touching `engine.js`, re-render a classic beat and a hard beat from the pocket page and compare `analyse` numbers with the reference points above, then check the pocket page at phone width (375 px): no sideways scroll, the floating play key works.
 - No external requests of any kind (fonts, scripts, analytics). The pocket page must keep working offline from a Home Screen icon.
 - The owner finds the `screech` lead too keyboard-like for tekk and frenchcore (said 2026-11-16). For those styles carry the tune with `hoover`, `acid`, `saw` or a kick that plays notes.

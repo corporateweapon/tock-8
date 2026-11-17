@@ -29,7 +29,7 @@ self.addEventListener('fetch', (e) => {
       if (res.ok) cache.put(req.url, res.clone());
       return res;
     } catch (err) {
-      return (await cache.match(req.url, { ignoreSearch: true })) || (await cache.match('./index.html')) || Response.error();
+      return (await cache.match(req.url)) || (await cache.match(req.url, { ignoreSearch: true })) || (await cache.match('./index.html')) || Response.error();
     }
   })());
 });
