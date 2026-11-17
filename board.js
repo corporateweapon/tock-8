@@ -39,9 +39,9 @@ function FL(px){ return '900 '+px+'px '+LOGO; }
 function fmt(sec){ sec=Math.max(0,Math.floor(sec)); return Math.floor(sec/60)+':'+(sec%60<10?'0':'')+(sec%60); }
 function noteName(m){ return NOTE[((m%12)+12)%12]+(Math.floor(m/12)-1); }
 function sprite(w,h){ var s=document.createElement('canvas'); s.width=Math.max(1,Math.ceil(w*k*dpr)); s.height=Math.max(1,Math.ceil(h*k*dpr)); var c=s.getContext('2d'); c.scale(k*dpr,k*dpr); return {cv:s,c:c}; }
-function hueOf(t){ var gr=T.inst(t.inst).group; return gr==='Bass'?C.tang:gr==='Synths'?C.mint:gr==='Effects'?C.violet:C.bone; }
+function hueOf(t){ var gr=T.inst(t.inst).group; return gr==='Bass'?C.tang:gr==='Synths'?C.mint:gr==='Effects'?C.violet:gr==='Samples'?C.gold:C.bone; }
 function isKick(t){ return /kick$/.test(t.inst); }
-function held(I){ return I.group==='Synths'||I.group==='Bass'||I.id==='riser'||I.id==='fall'||I.id==='siren'||I.id==='scratch'||I.id==='glitch'; }
+function held(I){ return I.group==='Synths'||I.group==='Bass'||I.id==='riser'||I.id==='fall'||I.id==='siren'||I.id==='scratch'||I.id==='glitch'||!!(I.sample&&(I.hold||I.pick||I.defLen>1)); }
 /* seconds per step: parts can run at their own speed, so ask the step that is playing */
 function SD(){ return (cur&&cur.sd)||T.stepSec(P); }
 function sdOf(sec){ return T.secSd?T.secSd(P,sec):T.stepSec(P); }
@@ -391,7 +391,7 @@ function fire(e){
     var v=row.v[e.step]||1,n=clamp(row.n[e.step]|0,-7,14),l=held(I)?Math.max(1,row.l[e.step]|0):1,vel=(T.VEL&&T.VEL[v])||1,col=L.col[i],
         r0=L.rr[i]+(L.pit[i]?(n-3.5)/10.5*L.sp*0.3:0),kick=isKick(t);
     st.hit=1; st.t0=e.t; st.len=l*sd; st.t1=e.t+(l>1?l*sd*0.92:0.05); st.pk=clamp(t.lv/125*(0.4+0.45*vel),0.08,1); st.m=Math.max(st.m,st.pk);
-    st.note=I.pitched?noteName((I.base||57)+t.tn+(P.key|0)+(e.shift|0)+T.degSemis(n,P.scale)):'';
+    st.note=I.pick?'#'+((((row.n[e.step]|0)%I.pick+I.pick)%I.pick)+1):I.pitched?noteName((I.base||57)+t.tn+(P.key|0)+(e.shift|0)+T.degSemis(n,P.scale)):'';
     if(I.id==='scratch'){ decks[dk].scr0=e.t; decks[dk].scr1=e.t+l*sd; decks[dk].scrP=2*sd; }
     decks[dk].trail.push({r:r0,s:s,span:Math.min(15.9,l>1?l-0.22:0.62),col:col,w:L.sp*(v===2?0.7:v===3?0.4:0.56),t1:st.t1,v:vel});
     emit(d.cx+1,d.cy-r0,col,kick?20:v===2?10:v===3?3:6,pow*r0*(kick?1.3:1));
