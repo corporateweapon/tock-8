@@ -852,8 +852,8 @@ function openSheet(kind,title,html,from){ sheetKind=kind; $('sheetTitle').textCo
 function closeSheet(){ if(sheet.hidden) return; sheet.hidden=true; sheetKind=''; if(sheetFrom) sheetFrom.focus(); }
 function toggleSheet(kind,title,html,from){ if(!sheet.hidden&&sheetKind===kind) closeSheet(); else openSheet(kind,title,typeof html==='function'?html():html,from); }
 function songsHtml(){
-  var ids=Object.keys(store.projects),h='<h3>Start a new song</h3><div class="opts">'+
-    '<button type="button" class="opt" data-new="starter"><b>First Drop</b><span>A short finished hardstyle arrangement: intro, break, build, drop, outro. Take it apart to see how it works.</span></button>'+
+  var ids=Object.keys(store.projects),h='<h3>Open a finished song to take apart, or start empty</h3><div class="opts">'+
+    T.DEMOS.map(function(d){ return '<button type="button" class="opt" data-new="demo:'+d.id+'"><b>'+esc(d.name)+'</b><span>'+esc(d.about)+'</span></button>'; }).join('')+
     '<button type="button" class="opt" data-new="empty"><b>Empty song</b><span>Six tracks and one pattern with a kick on every beat.</span></button></div>'+
     '<h3>Start from a pocket beat</h3><div class="inline"><select id="beatPick">'+pocketBeats().map(function(b,i){ return '<option value="'+i+'">'+esc(b.label)+'</option>'; }).join('')+'</select><button type="button" class="key k-tang" data-new="beat">Make a song</button></div>'+
     '<h3>Your songs</h3><div class="plist">';
@@ -880,7 +880,8 @@ var HELP_HTML='<h3>How a song is built</h3><ul>'+
   '<h3>A hard dance arrangement</h3><ul>'+
   '<li>Intro: kick and hats only, effect Open up. Break: no kick, melody and a clap. Build: snare with Build roll, a Riser held across the pattern, effect Thin out.</li>'+
   '<li>Drop: everything, with a Boom and a Crash on the first bar only. Outro: kick and hats, effect Close down.</li>'+
-  '<li>Tempo: jumpstyle 140 to 150, hardstyle 150, tekk 170 to 180, hardcore 180 to 200. Crunch adds grit to the whole mix.</li></ul>'+
+  '<li>Tempo: jumpstyle 140 to 150, hardstyle 150, tekk 170 to 180, hardcore 180 to 200. Crunch adds grit to the whole mix.</li>'+
+  '<li>Leads for tekk and frenchcore: Hoover swoops into each note, Acid line squelches and slides when notes overlap, Dark choir fills a break with one long note per bar. A hard kick can play notes too: select the kick and use the Notes panel.</li></ul>'+
   '<h3>Keeping your work</h3><ul>'+
   '<li>Songs are saved on this computer as you go. Export, Song file gives you a copy to keep elsewhere.</li>'+
   '<li>Ctrl+Z undoes, Ctrl+Y redoes.</li></ul>';
@@ -891,7 +892,7 @@ sheetBody.addEventListener('click',function(e){
   if((k=b.getAttribute('data-new'))){
     if(k==='file'){ $('openFile').value=''; $('openFile').click(); return; }
     saveNow();
-    var np=k==='starter'?T.starterProject():k==='empty'?T.emptyProject():k==='beat'?T.projectFromBeat(pocketBeats()[+$('beatPick').value].beat):T.normProject(clone(P));
+    var np=k.indexOf('demo:')===0?T.demo(k.slice(5)):k==='empty'?T.emptyProject():k==='beat'?T.projectFromBeat(pocketBeats()[+$('beatPick').value].beat):T.normProject(clone(P));
     if(k==='copy'){ np.id='s'+Date.now().toString(36); np.name=(P.name+' COPY').slice(0,28); }
     setProject(np); saveNow(); closeSheet(); say('NEW SONG'); return;
   }
@@ -946,7 +947,7 @@ window.addEventListener('resize',drawScope);
 window.tock8={
   page:'studio',version:T.version,
   help:function(){ return 'Tock Studio. getProject() and setProject(project) read and replace the whole song (compact rows are accepted, see CLAUDE.md). '+
-    'instruments() lists the sounds. newFromBeat(beat) starts from a pocket beat, starter() loads the demo. '+
+    'instruments() lists the sounds. newFromBeat(beat) starts from a pocket beat, demos() lists the finished songs and demo(id) opens one. '+
     'render("song"|"stems"|"midi"|"pattern"|"project", opts) resolves to {name,type,bytes}; renderAndSave(...) also writes the file and returns measurements for WAVs. '+
     'analyse(bytes) measures a WAV. play("song"|"pat"), stop(), select({part, pattern, track}).'; },
   instruments:function(){ return T.INSTR.map(function(I){ return {id:I.id,name:I.name,group:I.group,pitched:!!I.pitched,defaultLength:I.defLen||1}; }); },
@@ -954,6 +955,8 @@ window.tock8={
   setProject:function(p){ var np=T.normProject(p); if(p&&p.id===P.id) np.id=P.id; pushUndo(); var keep=undoS,id=np.id; setProject(np,true); undoS=keep; redoS=[]; renderTop(); saveNow(); return clone(P); },
   newFromBeat:function(b){ saveNow(); setProject(T.projectFromBeat(typeof b==='string'?(T.PRESETS.filter(function(p){ return p.name===b.toUpperCase(); })[0]||{}):b)); saveNow(); return clone(P); },
   starter:function(){ saveNow(); setProject(T.starterProject()); saveNow(); return clone(P); },
+  demos:function(){ return T.DEMOS.map(function(d){ return {id:d.id,name:d.name,about:d.about}; }); },
+  demo:function(id){ var np=T.demo(id); if(!np) throw new Error('no demo song called '+id+'; see demos()'); saveNow(); setProject(np); saveNow(); return clone(P); },
   select:function(o){ o=o||{}; if(o.part!=null){ ui.sec=Math.max(0,Math.min(P.song.length-1,o.part|0)); ui.pat=curSec().pat; } if(o.pattern) ui.pat=o.pattern; if(o.track) ui.trk=o.track; renderAll(); return {part:ui.sec,pattern:ui.pat,track:ui.trk}; },
   play:function(mode){ startPlay(mode==='pat'?'pat':'song'); },stop:function(){ stopPlay(); },
   render:function(what,o){ return makeFile(what||'song',o); },
