@@ -257,7 +257,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:22px;border:0;border-radiu
       <label class="f"><span class="leg">Part</span><input type="text" id="sName" maxlength="14" spellcheck="false" autocomplete="off" style="width:110px;text-transform:uppercase"></label>
       <label class="f"><span class="leg">plays</span><select id="sPat"></select></label>
       <label class="f"><span class="leg">times</span><input type="number" id="sRep" min="1" max="64"></label>
-      <label class="f"><span class="leg">Effect</span><select id="sFx"><option value="none">None</option><option value="open">Open up (muffled to bright)</option><option value="close">Close down (bright to muffled)</option><option value="thin">Thin out (bass drains away)</option></select></label>
+      <label class="f"><span class="leg">Effect</span><select id="sFx"><option value="none">None</option><option value="open">Open up (muffled to bright)</option><option value="close">Close down (bright to muffled)</option><option value="thin">Thin out (bass drains away)</option><option value="gate">Chop (cuts in and out)</option><option value="pump">Pump (closes after every beat)</option></select></label>
+      <label class="f"><span class="leg">Shift</span><input type="number" id="sShift" min="-12" max="12" title="Move this part up or down, in semitones. 0 leaves it in the song key"></label>
+      <label class="f"><span class="leg">Speed %</span><input type="number" id="sSpeed" min="50" max="200" step="5" title="How fast this part runs. 100 is the song tempo, 50 is half, 125 is a quarter faster"></label>
       <span class="sp"></span>
       <button class="key k-char sm" type="button" id="sLeft" title="Move this part earlier">&#9664;</button>
       <button class="key k-char sm" type="button" id="sRight" title="Move this part later">&#9654;</button>
@@ -309,7 +311,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:22px;border:0;border-radiu
         <label class="f"><span class="leg">Left / right <b id="vPan"></b></span><input type="range" id="tPan" min="-100" max="100"></label>
         <label class="f"><span class="leg">Tune <b id="vTn"></b></span><input type="range" id="tTn" min="-24" max="24"></label>
         <label class="f"><span class="leg">Room <b id="vVerb"></b></span><input type="range" id="tVerb" min="0" max="100"></label>
-        <label class="f wide"><span class="leg">Echo <b id="vEcho"></b></span><input type="range" id="tEcho" min="0" max="100"></label>
+        <label class="f"><span class="leg">Echo <b id="vEcho"></b></span><input type="range" id="tEcho" min="0" max="100"></label>
+        <label class="f" title="Distortion on this track alone"><span class="leg">Drive <b id="vDrive"></b></span><input type="range" id="tDrive" min="0" max="100"></label>
+        <label class="f wide" title="Left of the middle is darker, right is thinner"><span class="leg">Tone <b id="vTone"></b></span><input type="range" id="tTone" min="-100" max="100"></label>
       </div>
       <h3>Quick fill, this pattern</h3>
       <div class="fills" id="fills">
@@ -340,8 +344,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:22px;border:0;border-radiu
 <input type="file" id="openFile" accept=".json,application/json" hidden>
 <noscript><p>Tock Studio needs JavaScript.</p></noscript>
 
-<script src="engine.js?v=4.3"></script>
-<script src="board.js?v=4.3"></script>
+<script src="engine.js?v=4.4"></script>
+<script src="board.js?v=4.4"></script>
 <script>
 (function(){
 'use strict';
@@ -354,7 +358,7 @@ function arr(n,v){ return new Array(n).fill(v); }
 var KEY='tock8.studio.v1',POCKET_KEY='tock8.v2';
 var CW=24,RH=14,DMAX=14,DMIN=-7,ROWS=DMAX-DMIN+1;
 var NOTE=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-var FXN={open:'OPEN',close:'CLOSE',thin:'THIN'};
+var FXN={open:'OPEN',close:'CLOSE',thin:'THIN',gate:'CHOP',pump:'PUMP'};
 var store={cur:null,projects:{}},P=null;
 var ui={sec:0,pat:null,trk:null,lastDeg:{}};
 var undoS=[],redoS=[];
@@ -436,15 +440,16 @@ function cutVoices(){
 /* ---------------- clock ---------------- */
 var pl={on:false,mode:'pat',sec:0,rep:0,step:0,next:0,timer:0,queue:[],t0:0,elapsed:0};
 function tick(){
-  var now=live.ac.currentTime,sd=T.stepSec(P);
+  var now=live.ac.currentTime,sd;
   while(pl.next<now+0.14){
     if(pl.sec>=P.song.length) pl.sec=0;
     var sec=pl.mode==='song'?P.song[pl.sec]:null,pat=sec?T.patById(P,sec.pat):curPat(),n=pat.bars*16;
     if(pl.step>=n) pl.step=0;
-    if(sec&&pl.step===0&&pl.rep===0) T.sectionFx(live,sec.fx,pl.next,pl.next+sec.rep*n*sd);
+    sd=T.secSd(P,sec);
+    if(sec&&pl.step===0&&pl.rep===0) T.sectionFx(live,sec.fx,pl.next,pl.next+sec.rep*n*sd,sd);
     var hits=T.scheduleStep(live,P,sec,pat,pl.step,pl.next+(pl.step%2===1?sd*P.swing/100:0),sd);
     pl.queue.push({t:pl.next,sec:pl.sec,step:pl.step,pat:pat.id,rep:pl.rep,hits:hits,el:pl.elapsed});
-    if(BOARD&&BOARD.isOpen()) BOARD.step({t:pl.next,sw:pl.step%2===1?sd*P.swing/100:0,sec:pl.sec,step:pl.step,pat:pat.id,rep:pl.rep,hits:hits,el:pl.elapsed,mode:pl.mode});
+    if(BOARD&&BOARD.isOpen()) BOARD.step({t:pl.next,sw:pl.step%2===1?sd*P.swing/100:0,sec:pl.sec,step:pl.step,pat:pat.id,rep:pl.rep,hits:hits,el:pl.elapsed,mode:pl.mode,sd:sd,shift:sec?sec.shift|0:0});
     pl.next+=sd; pl.elapsed+=sd; pl.step++;
     if(pl.step>=n){
       pl.step=0;
@@ -455,10 +460,11 @@ function tick(){
 function startPlay(mode){
   if(!ensureAudio()) return;
   if(pl.on) stopPlay(true);
+  if(BOARD&&BOARD.reset) BOARD.reset();
   T.applyStudio(live,P);
   pl.mode=mode; pl.sec=ui.sec; pl.rep=0; pl.step=0; pl.queue=[]; pl.next=live.ac.currentTime+0.08; pl.on=true;
   pl.elapsed=0;
-  if(mode==='song'){ var sd=T.stepSec(P); for(var i=0;i<ui.sec;i++) pl.elapsed+=P.song[i].rep*T.patById(P,P.song[i].pat).bars*16*sd; }
+  if(mode==='song'){ for(var i=0;i<ui.sec;i++) pl.elapsed+=P.song[i].rep*T.patById(P,P.song[i].pat).bars*16*T.secSd(P,P.song[i]); }
   else T.sectionFx(live,'none',live.ac.currentTime,live.ac.currentTime);
   tick(); pl.timer=setInterval(tick,25);
   $('playSong').setAttribute('aria-pressed',mode==='song'?'true':'false'); $('playPat').setAttribute('aria-pressed',mode==='pat'?'true':'false');
@@ -467,6 +473,7 @@ function startPlay(mode){
 }
 function stopPlay(quiet){
   clearInterval(pl.timer); pl.on=false; pl.queue=[];
+  if(BOARD&&BOARD.reset) BOARD.reset();
   cutVoices();
   $('playSong').setAttribute('aria-pressed','false'); $('playPat').setAttribute('aria-pressed','false');
   var a=$('gridPh'),b=$('rollPh'); if(a) a.hidden=true; if(b) b.hidden=true;
@@ -485,7 +492,7 @@ function openBoard(){ if(!BOARD){ say('LIVE BOARD DID NOT LOAD'); return false; 
 var cv=$('scope'),g2=cv.getContext('2d'),rafId=0,activeUntil=0,msgT=0,lastQ=null;
 function say(text){ $('lMsg').textContent=text; clearTimeout(msgT); msgT=setTimeout(function(){ $('lMsg').textContent=''; },2200); }
 function refreshLCD(){
-  var sd=T.stepSec(P),total=T.songSteps(P)*sd,s=curSec();
+  var total=T.songSeconds(P),s=curSec();
   $('lName').textContent=P.name.toUpperCase();
   $('lBpm').textContent=P.bpm;
   if(!pl.on){
@@ -530,7 +537,7 @@ function frame(){
         var cur=document.querySelector('.sec.now'),el=document.querySelector('.sec[data-sec="'+q.sec+'"]');
         if(cur!==el){ if(cur) cur.classList.remove('now'); if(el) el.classList.add('now'); }
         $('lPart').textContent='PART '+(q.sec+1)+'/'+P.song.length+' '+P.song[q.sec].name+' '+(q.rep+1)+'/'+P.song[q.sec].rep;
-        $('lTime').textContent=fmtTime(q.el)+' / '+fmtTime(T.songSteps(P)*T.stepSec(P));
+        $('lTime').textContent=fmtTime(q.el)+' / '+fmtTime(T.songSeconds(P));
       } else { $('lPart').textContent='LOOP '+curPat().name; $('lTime').textContent=''; }
       $('lBar').textContent='BAR '+(Math.floor(q.step/16)+1)+'.'+(Math.floor(q.step%16/4)+1);
       q.hits.forEach(function(id){ var led=document.querySelector('.th[data-tid="'+id+'"] .tl'); if(led){ led.classList.add('hit'); clearTimeout(led._t); led._t=setTimeout(function(){ led.classList.remove('hit'); },90); } });
@@ -554,16 +561,16 @@ function renderTop(){
 }
 function renderSecFields(){
   var s=curSec();
-  setVal($('sName'),s.name); setVal($('sRep'),s.rep); $('sFx').value=s.fx;
+  setVal($('sName'),s.name); setVal($('sRep'),s.rep); $('sFx').value=s.fx; setVal($('sShift'),s.shift|0); setVal($('sSpeed'),s.speed||100);
   fill($('sPat'),P.patterns.map(function(p){ return '<option value="'+esc(p.id)+'">'+esc(p.name)+' ('+p.bars+' bar'+(p.bars>1?'s':'')+')</option>'; }).join(''),s.pat);
   $('sLeft').disabled=ui.sec===0; $('sRight').disabled=ui.sec===P.song.length-1; $('sDel').disabled=P.song.length<2;
 }
 function renderSong(){
-  var n=P.song.length,sd=T.stepSec(P),steps=T.songSteps(P),h='<div class="mx" style="grid-template-columns:150px repeat('+n+',108px) 40px">';
-  h+='<div class="mxc corner">'+(steps/16)+' bars<br>'+fmtTime(steps*sd)+'</div>';
+  var n=P.song.length,steps=T.songSteps(P),h='<div class="mx" style="grid-template-columns:150px repeat('+n+',108px) 40px">';
+  h+='<div class="mxc corner">'+(steps/16)+' bars<br>'+fmtTime(T.songSeconds(P))+'</div>';
   P.song.forEach(function(s,i){
     var pat=T.patById(P,s.pat);
-    h+='<button type="button" class="sec'+(i===ui.sec?' sel':'')+'" data-sec="'+i+'" title="'+(s.rep*pat.bars)+' bars"><b>'+esc(s.name)+'</b><span>'+esc(pat.name)+' &times;'+s.rep+'</span>'+(s.fx!=='none'?'<i>'+FXN[s.fx]+'</i>':'')+'</button>';
+    h+='<button type="button" class="sec'+(i===ui.sec?' sel':'')+'" data-sec="'+i+'" title="'+(s.rep*pat.bars)+' bars"><b>'+esc(s.name)+'</b><span>'+esc(pat.name)+' &times;'+s.rep+(s.shift?' '+(s.shift>0?'+':'')+s.shift:'')+(s.speed!==100?' '+s.speed+'%':'')+'</span>'+(s.fx!=='none'?'<i>'+FXN[s.fx]+'</i>':'')+'</button>';
   });
   h+='<button type="button" class="addsec" id="addSec" title="Add a part after the selected one" aria-label="Add a part">+</button>';
   P.tracks.forEach(function(t){
@@ -622,8 +629,8 @@ var instOpts='';
 function renderInsp(){
   var t=selTrack(),i=P.tracks.indexOf(t);
   setVal($('tName'),t.name); $('tInst').value=t.inst;
-  $('tLv').value=t.lv; $('tPan').value=t.pan; $('tTn').value=t.tn; $('tVerb').value=t.verb; $('tEcho').value=t.echo;
-  $('vLv').textContent=t.lv; $('vPan').textContent=t.pan===0?'centre':(t.pan<0?'L':'R')+Math.abs(t.pan); $('vTn').textContent=(t.tn>0?'+':'')+t.tn; $('vVerb').textContent=t.verb; $('vEcho').textContent=t.echo;
+  $('tLv').value=t.lv; $('tPan').value=t.pan; $('tTn').value=t.tn; $('tVerb').value=t.verb; $('tEcho').value=t.echo; $('tDrive').value=t.drive|0; $('tTone').value=t.tone|0;
+  $('vLv').textContent=t.lv; $('vPan').textContent=t.pan===0?'centre':(t.pan<0?'L':'R')+Math.abs(t.pan); $('vTn').textContent=(t.tn>0?'+':'')+t.tn; $('vVerb').textContent=t.verb; $('vEcho').textContent=t.echo; $('vDrive').textContent=t.drive|0; $('vTone').textContent=toneName(t.tone|0);
   $('tUp').disabled=i===0; $('tDown').disabled=i===P.tracks.length-1; $('tDel').disabled=P.tracks.length<2;
   $('addTrack').disabled=P.tracks.length>=16;
 }
@@ -652,6 +659,8 @@ $('sName').addEventListener('change',function(){ pushUndo(); curSec().name=(this
 $('sPat').addEventListener('change',function(){ pushUndo(); curSec().pat=this.value; ui.pat=this.value; renderAll(); });
 $('sRep').addEventListener('change',function(){ pushUndo(); curSec().rep=Math.max(1,Math.min(64,Math.round(+this.value)||1)); renderAll(); });
 $('sFx').addEventListener('change',function(){ pushUndo(); curSec().fx=this.value; renderAll(); });
+$('sShift').addEventListener('change',function(){ pushUndo(); curSec().shift=Math.max(-12,Math.min(12,Math.round(+this.value)||0)); this.value=curSec().shift; renderAll(); });
+$('sSpeed').addEventListener('change',function(){ pushUndo(); curSec().speed=Math.max(50,Math.min(200,Math.round(+this.value)||100)); this.value=curSec().speed; renderAll(); });
 $('sLeft').addEventListener('click',function(){ if(ui.sec<1) return; pushUndo(); var s=P.song.splice(ui.sec,1)[0]; P.song.splice(--ui.sec,0,s); renderAll(); });
 $('sRight').addEventListener('click',function(){ if(ui.sec>=P.song.length-1) return; pushUndo(); var s=P.song.splice(ui.sec,1)[0]; P.song.splice(++ui.sec,0,s); renderAll(); });
 $('sCopy').addEventListener('click',function(){ pushUndo(); P.song.splice(ui.sec+1,0,clone(curSec())); ui.sec++; renderAll(); });
@@ -783,6 +792,9 @@ slider('tPan','vPan',null,function(v){ selTrack().pan=v; },function(v){ return v
 slider('tTn','vTn',null,function(v){ selTrack().tn=v; },function(v){ return (v>0?'+':'')+v; },function(){ renderRoll(); audition(selTrack(),ui.lastDeg[ui.trk]||0); });
 slider('tVerb','vVerb',null,function(v){ selTrack().verb=v; });
 slider('tEcho','vEcho',null,function(v){ selTrack().echo=v; });
+function toneName(v){ return v===0?'flat':v<0?'dark '+(-v):'thin '+v; }
+slider('tDrive','vDrive',null,function(v){ selTrack().drive=v; },null,function(){ audition(selTrack(),ui.lastDeg[ui.trk]||0); });
+slider('tTone','vTone',null,function(v){ selTrack().tone=v; },toneName,function(){ audition(selTrack(),ui.lastDeg[ui.trk]||0); });
 slider('mSwing','vSwing',null,function(v){ P.swing=v; });
 slider('mCrunch','vCrunch',null,function(v){ P.crunch=v; });
 slider('mVol','vVol',null,function(v){ P.vol=v; });
@@ -892,6 +904,11 @@ var HELP_HTML='<h3>How a song is built</h3><ul>'+
   '<li>Drop: everything, with a Boom and a Crash on the first bar only. Outro: kick and hats, effect Close down.</li>'+
   '<li>Tempo: jumpstyle 140 to 150, hardstyle 150, tekk 170 to 180, hardcore 180 to 200. Crunch adds grit to the whole mix.</li>'+
   '<li>Leads for tekk and frenchcore: Hoover swoops into each note, Acid line squelches and slides when notes overlap, Acid scream is the same thing angrier, Dark choir fills a break with one long note per bar. A hard kick can play notes too: select the kick and use the Notes panel.</li></ul>'+
+  '<h3>Bending it</h3><ul>'+
+  '<li>Every track has <b>Drive</b> (its own distortion) and <b>Tone</b> (darker to the left, thinner to the right) beside Level, Tune, Room and Echo.</li>'+
+  '<li>Every part has <b>Shift</b>, which moves the whole part up or down in semitones, and <b>Speed</b>, which runs it faster or slower than the song. Try the last drop at +2, or a break at 50%.</li>'+
+  '<li>Two more part effects: <b>Chop</b> cuts the sound in and out, <b>Pump</b> lets the mix close after every beat.</li>'+
+  '<li>New sounds: Yoi lead (a vowel that goes from o to i), Metal bleep, Siren (wails for as long as the note is held) and Scratch.</li></ul>'+
   '<h3>Watching it play</h3><ul>'+
   '<li><b>Live</b> opens a DJ board that plays along with the song. It only shows the song; nothing on it changes your work.</li>'+
   '<li>Each record is a pattern: one ring per track, one turn per bar. A mark sounds as it passes under the glass rail at the top. When the song moves to another pattern the crossfader goes over to the other deck.</li>'+

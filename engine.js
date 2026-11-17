@@ -3,7 +3,7 @@
    Everything hangs off window.Tock. See CLAUDE.md for the data formats. */
 (function(){
 'use strict';
-var T={version:'4.3'};
+var T={version:'4.4'};
 
 /* ================= kits and built-in beats ================= */
 var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
@@ -517,6 +517,60 @@ function scream(time,v,r,d){
   o.connect(pre); pre.connect(lp); o.start(time); o.stop(time+dur+0.12);
   R[k+'F']=f; R[k+'T']=time+(CLEN||CSD);
 }
+/* yoi: the hardcore vowel lead. Saws through three mouth filters that move from "o" to "i" on every note, then driven */
+function yoi(time,v,r,d){
+  var ac=R.ac,f=220*r,dur=CLEN||CSD*1.8,k='yoi'+CID,mv=Math.min(0.11,dur*0.6);
+  choke(k+'G',time);
+  var amp=ampHold(time,0.25*v,0.006,dur*0.92,0.06,d); R[k+'G']=amp;
+  var post=shaper(4,filter('highpass',200,0,amp)),mix=ac.createGain(); mix.gain.value=0.5;
+  [[430,300,7,1],[820,2300,9,0.8],[2500,3100,6,0.3]].forEach(function(fm){
+    var b=ac.createBiquadFilter(),g=ac.createGain(); b.type='bandpass'; b.Q.value=fm[2]; g.gain.value=fm[3];
+    b.frequency.setValueAtTime(fm[0],time); b.frequency.exponentialRampToValueAtTime(fm[1],time+mv);
+    mix.connect(b); b.connect(g); g.connect(post);
+  });
+  [-12,0,11].forEach(function(det,i){
+    var o=ac.createOscillator(); o.type=i===1?'square':'sawtooth'; o.detune.value=det;
+    o.frequency.setValueAtTime(f*0.94,time); o.frequency.exponentialRampToValueAtTime(f,time+0.03);
+    o.connect(mix); o.start(time); o.stop(time+dur+0.1);
+  });
+}
+/* metal bleep: one sine bent hard by another (FM), so each note clangs like struck metal and then rings clean */
+function metal(time,v,r,d){
+  var ac=R.ac,f=440*r,dec=Math.max(0.09,Math.min(CLEN||0.2,0.9)),out=shaper(1.8,gainEnv(time,0.45*v,dec,d));
+  [[1,3.53,5],[2.01,1.41,2.2]].forEach(function(p,i){
+    var c=ac.createOscillator(),m=ac.createOscillator(),mg=ac.createGain(),cg=ac.createGain();
+    c.frequency.value=f*p[0]; m.frequency.value=f*p[0]*p[1]; cg.gain.value=i?0.4:0.7;
+    mg.gain.setValueAtTime(f*p[0]*p[2],time); mg.gain.exponentialRampToValueAtTime(f*p[0]*0.15,time+dec*0.7);
+    m.connect(mg); mg.connect(c.frequency); c.connect(cg); cg.connect(out);
+    c.start(time); m.start(time); c.stop(time+dec+0.05); m.stop(time+dec+0.05);
+  });
+}
+/* air-raid siren: wails up an octave and back down every two beats, for as long as the note is held */
+function siren(time,v,r,d){
+  var ac=R.ac,f=440*r,dur=CLEN||CSD*16,per=Math.max(0.25,CSD*8),amp=ampHold(time,0.13*v,0.03,dur*0.96,0.12,d),
+      lp=filter('lowpass',3400,2,shaper(2.5,filter('highpass',260,0,amp)));
+  [['sawtooth',1,0.5],['square',1.005,0.22],['sawtooth',2,0.12]].forEach(function(p){
+    var o=ac.createOscillator(),g=ac.createGain(),t; o.type=p[0]; g.gain.value=p[2];
+    o.frequency.setValueAtTime(f*p[1]*0.5,time);
+    for(t=0;t<dur;t+=per){ o.frequency.exponentialRampToValueAtTime(f*p[1],time+t+per*0.55); o.frequency.exponentialRampToValueAtTime(f*p[1]*0.5,time+t+per); }
+    o.connect(g); g.connect(lp); o.start(time); o.stop(time+dur+0.2);
+  });
+}
+/* scratch: a record dragged forward and back under the needle, once every two steps for as long as the note is held */
+function scratch(time,v,r,d){
+  var ac=R.ac,dur=CLEN||CSD*2,per=Math.max(0.09,CSD*2),amp=ac.createGain(),t; amp.connect(d);
+  amp.gain.setValueAtTime(0.0001,time);
+  var bp=ac.createBiquadFilter(); bp.type='bandpass'; bp.Q.value=2.2; bp.frequency.setValueAtTime(500*r,time); bp.connect(shaper(3,amp));
+  var o=ac.createOscillator(),og=ac.createGain(); o.type='sawtooth'; og.gain.value=0.35; o.frequency.setValueAtTime(110*r,time);
+  for(t=0;t<dur-0.01;t+=per){
+    var a=time+t,m=a+per*0.48,e=a+per*0.96;
+    amp.gain.setValueAtTime(0.0001,a); amp.gain.linearRampToValueAtTime(0.42*v,a+per*0.08); amp.gain.setValueAtTime(0.42*v,m-per*0.06); amp.gain.linearRampToValueAtTime(0.04*v,m);
+    amp.gain.linearRampToValueAtTime(0.36*v,m+per*0.08); amp.gain.linearRampToValueAtTime(0.0001,e);
+    bp.frequency.setValueAtTime(500*r,a); bp.frequency.exponentialRampToValueAtTime(3200*r,m); bp.frequency.exponentialRampToValueAtTime(420*r,e);
+    o.frequency.setValueAtTime(110*r,a); o.frequency.exponentialRampToValueAtTime(700*r,m); o.frequency.exponentialRampToValueAtTime(90*r,e);
+  }
+  noise(time,dur,bp); o.connect(og); og.connect(bp); o.start(time); o.stop(time+dur+0.05);
+}
 /* dark choir: a chord of saws through three vowel filters, swelling in slowly. For breaks and intros */
 function choir(time,v,r,d){
   var ac=R.ac,f=220*r,dur=CLEN||CSD*16,att=Math.min(0.3,dur*0.4),end=Math.max(att+0.01,dur),ch=CCH||[1];
@@ -559,10 +613,14 @@ var INSTR=[
  {id:'acid',name:'Acid line',group:'Synths',fn:acid,pitched:true,base:45,prog:38},
  {id:'scream',name:'Acid scream',group:'Synths',fn:scream,pitched:true,base:45,prog:87,defLen:2},
  {id:'choir',name:'Dark choir',group:'Synths',fn:choir,pitched:true,chord:true,base:57,prog:52,defLen:16},
+ {id:'yoi',name:'Yoi lead',group:'Synths',fn:yoi,pitched:true,base:57,prog:85,defLen:2},
+ {id:'metal',name:'Metal bleep',group:'Synths',fn:metal,pitched:true,base:69,prog:14},
  {id:'zap',name:'Zap',group:'Effects',fn:zap},
  {id:'riser',name:'Riser',group:'Effects',fn:riser,defLen:16},
  {id:'fall',name:'Fall',group:'Effects',fn:fall,defLen:16},
- {id:'boom',name:'Boom',group:'Effects',fn:boom,gm:35}
+ {id:'boom',name:'Boom',group:'Effects',fn:boom,gm:35},
+ {id:'siren',name:'Siren',group:'Effects',fn:siren,pitched:true,base:69,prog:81,defLen:16},
+ {id:'scratch',name:'Scratch',group:'Effects',fn:scratch,defLen:2}
 ],BY={};
 INSTR.forEach(function(I){ BY[I.id]=I; });
 T.INSTR=INSTR; T.inst=function(id){ return BY[id]||BY.kick; };
@@ -583,7 +641,8 @@ T.buildStudioRig=function(ac,withScope){
   rig.lpF=ac.createBiquadFilter(); rig.lpF.type='lowpass'; rig.lpF.frequency.value=rig.top; rig.lpF.Q.value=0.9;
   rig.hpF=ac.createBiquadFilter(); rig.hpF.type='highpass'; rig.hpF.frequency.value=10; rig.hpF.Q.value=0.9;
   var comp=makeComp(ac); rig.out=ac.createGain();
-  rig.master.connect(rig.shaper); rig.shaper.connect(rig.trim); rig.trim.connect(rig.lpF); rig.lpF.connect(rig.hpF); rig.hpF.connect(comp); comp.connect(rig.out);
+  rig.gate=ac.createGain(); /* cut in and out by the chop effect */
+  rig.master.connect(rig.shaper); rig.shaper.connect(rig.trim); rig.trim.connect(rig.lpF); rig.lpF.connect(rig.hpF); rig.hpF.connect(rig.gate); rig.gate.connect(comp); comp.connect(rig.out);
   rig.verbIn=ac.createGain();
   var hp=ac.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=320;
   var conv=ac.createConvolver(); conv.buffer=makeRoom(ac);
@@ -600,8 +659,12 @@ T.buildStudioRig=function(ac,withScope){
 };
 T.rigTrack=function(rig,id){
   var t=rig.tr[id],ac=rig.ac; if(t) return t;
-  t={in:ac.createGain(),pan:ac.createStereoPanner?ac.createStereoPanner():ac.createGain(),verb:ac.createGain(),echo:ac.createGain()};
+  t={in:ac.createGain(),pan:ac.createStereoPanner?ac.createStereoPanner():ac.createGain(),verb:ac.createGain(),echo:ac.createGain(),
+     drv:ac.createWaveShaper(),post:ac.createGain(),lp:ac.createBiquadFilter(),hp:ac.createBiquadFilter(),shaped:false};
   t.verb.gain.value=0; t.echo.gain.value=0;
+  /* drive and tone sit in a side chain that the track only goes through when one of them is set, so plain tracks are untouched */
+  t.drv.oversample='2x'; t.lp.type='lowpass'; t.lp.Q.value=0.6; t.lp.frequency.value=rig.top; t.hp.type='highpass'; t.hp.Q.value=0.6; t.hp.frequency.value=10;
+  t.drv.connect(t.post); t.post.connect(t.lp); t.lp.connect(t.hp); t.hp.connect(t.pan);
   t.in.connect(t.pan); t.pan.connect(rig.master); t.pan.connect(t.verb); t.verb.connect(rig.verbIn); t.pan.connect(t.echo); t.echo.connect(rig.echoIn);
   rig.tr[id]=t; return t;
 };
@@ -612,18 +675,26 @@ T.applyStudio=function(rig,P){
   rig.out.gain.value=P.vol/100;
   rig.delay.delayTime.value=Math.min(1.9,3*60/P.bpm/4); /* a dotted eighth */
   P.tracks.forEach(function(t){
-    var n=T.rigTrack(rig,t.id);
-    n.in.gain.value=t.lv/100; if(n.pan.pan) n.pan.pan.value=t.pan/100;
+    var n=T.rigTrack(rig,t.id),dr=t.drive|0,tone=t.tone|0,want=dr>0||tone!==0,k=1+dr/100*14;
+    if(want!==n.shaped){ try{ n.in.disconnect(); }catch(e){} n.in.connect(want?n.drv:n.pan); n.shaped=want; }
+    if(want){
+      n.in.gain.value=1; n.drv.curve=dr>0?driveCurve(k):null; n.post.gain.value=t.lv/100/(1+4.6*(1-Math.exp(-(k-1)/2.2))); /* measured, so turning Drive up changes the sound more than the loudness */
+      n.lp.frequency.value=tone<0?rig.top*Math.pow(350/rig.top,-tone/100):rig.top; n.hp.frequency.value=tone>0?20*Math.pow(150,tone/100):10;
+    } else n.in.gain.value=t.lv/100;
+    if(n.pan.pan) n.pan.pan.value=t.pan/100;
     n.verb.gain.value=t.verb/100*0.8; n.echo.gain.value=t.echo/100*0.7;
   });
 };
 
 /* ================= songs (studio projects) ================= */
-var FX={none:1,open:1,close:1,thin:1};
+var FX={none:1,open:1,close:1,thin:1,gate:1,pump:1};
 T.degSemis=function(d,scale){ var s=SCALES[scale]||SCALES.minor,o,i; d=d|0; o=Math.floor(d/7); i=((d%7)+7)%7; return 12*o+s[i]; };
 T.audible=function(P,t){ return P.tracks.some(function(x){ return x.solo; })?!!t.solo:!t.mute; };
 T.patById=function(P,id){ for(var i=0;i<P.patterns.length;i++) if(P.patterns[i].id===id) return P.patterns[i]; return P.patterns[0]; };
 T.stepSec=function(P){ return 60/P.bpm/4; };
+/* seconds per step inside one part: a part can run faster or slower than the song (speed, in percent) */
+T.secSd=function(P,sec){ return T.stepSec(P)*100/((sec&&sec.speed)||100); };
+T.songSeconds=function(P){ return P.song.reduce(function(n,s){ return n+s.rep*T.patById(P,s.pat).bars*16*T.secSd(P,s); },0); };
 T.songSteps=function(P){ return P.song.reduce(function(n,s){ return n+s.rep*T.patById(P,s.pat).bars*16; },0); };
 /* fire every hit that falls on one step of one pattern. sec (optional) switches tracks off; only (optional) = a single track id, for stems */
 T.scheduleStep=function(rig,P,sec,pat,step,when,sd,only){
@@ -635,22 +706,30 @@ T.scheduleStep=function(rig,P,sec,pat,step,when,sd,only){
     row=pat.rows[t.id]; if(!row) continue;
     v=row.v[step]; if(!v) continue;
     I=T.inst(t.inst); d=row.n[step]|0;
-    semis=t.tn+(I.pitched?(P.key|0)+T.degSemis(d,P.scale):0);
+    semis=t.tn+(I.pitched?(P.key|0)+(sec?sec.shift|0:0)+T.degSemis(d,P.scale):0);
     chord=I.chord?[0,2,4].map(function(k){ return Math.pow(2,(T.degSemis(d+k,P.scale)-T.degSemis(d,P.scale))/12); }):null;
     T.play(rig,t.inst,when,VEL[v]||1,Math.pow(2,semis/12),T.rigTrack(rig,t.id).in,sd,Math.max(1,row.l[step]|0)*sd,chord,t.id);
     hits.push(t.id);
   }
   return hits;
 };
-/* section effects sweep the master filters from the start of a section to its end.
-   open = muffled to bright, close = bright to muffled, thin = the bass drains away (the classic build before a drop) */
-T.sectionFx=function(rig,fx,t0,t1){
-  var lp=rig.lpF.frequency,hp=rig.hpF.frequency,top=rig.top;
-  try{ lp.cancelScheduledValues(t0); hp.cancelScheduledValues(t0); }catch(e){}
-  lp.setValueAtTime(fx==='open'?260:top,t0); hp.setValueAtTime(10,t0);
+/* section effects work on the whole mix from the start of a section to its end.
+   open = muffled to bright, close = bright to muffled, thin = the bass drains away (the classic build before a drop),
+   gate = chop: the sound is cut on every second step, pump = the mix is bright on each beat and closes before the next.
+   sd = seconds per step, needed by the two that follow the beat */
+T.sectionFx=function(rig,fx,t0,t1,sd){
+  var lp=rig.lpF.frequency,hp=rig.hpF.frequency,gt=rig.gate.gain,top=rig.top,t,i;
+  try{ lp.cancelScheduledValues(t0); hp.cancelScheduledValues(t0); gt.cancelScheduledValues(t0); }catch(e){}
+  lp.setValueAtTime(fx==='open'?260:top,t0); hp.setValueAtTime(10,t0); gt.setValueAtTime(1,t0);
   if(fx==='open') lp.exponentialRampToValueAtTime(top,t1);
   else if(fx==='close') lp.exponentialRampToValueAtTime(260,t1);
   else if(fx==='thin') hp.exponentialRampToValueAtTime(1400,t1);
+  else if(fx==='gate'&&sd>0){
+    for(t=t0+sd,i=1;t<t1-sd*0.5;t+=2*sd,i+=2){ gt.setValueAtTime(1,t); gt.linearRampToValueAtTime(0.05,t+0.005); gt.setValueAtTime(0.05,t+sd-0.005); gt.linearRampToValueAtTime(1,t+sd); }
+  } else if(fx==='pump'&&sd>0){
+    for(t=t0;t<t1-sd*0.5;t+=4*sd){ lp.setValueAtTime(top,t); lp.setValueAtTime(3600,t+sd*0.5); lp.exponentialRampToValueAtTime(230,t+sd*3.6); lp.setValueAtTime(230,t+sd*3.85); lp.exponentialRampToValueAtTime(top,t+sd*4); }
+    lp.setValueAtTime(top,t1);
+  }
 };
 /* render a project (or one pattern of it) to WAV bytes.
    o.only = track id for a stem; o.pattern = pattern id to render on its own, o.rep times; o.from / o.to = section range; o.tail = seconds of ring-out */
@@ -659,23 +738,23 @@ T.renderProject=function(P,o){
   var OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
   if(!OAC) return Promise.reject(new Error('this browser cannot render audio offline'));
   var secs=o.pattern?[{pat:o.pattern,rep:o.rep||1,fx:'none',off:{}}]:P.song.slice(o.from||0,o.to==null?P.song.length:o.to);
-  var sr=44100,sd=T.stepSec(P),steps=secs.reduce(function(n,s){ return n+s.rep*T.patById(P,s.pat).bars*16; },0),tail=o.tail==null?2.2:o.tail;
-  if(!steps) return Promise.reject(new Error('nothing to render'));
-  var ac=new OAC(2,Math.ceil((steps*sd+tail)*sr),sr),rig=T.buildStudioRig(ac,false),t=0,chunks=[],cur=null;
+  var sr=44100,total=secs.reduce(function(n,s){ return n+s.rep*T.patById(P,s.pat).bars*16*T.secSd(P,s); },0),tail=o.tail==null?2.2:o.tail;
+  if(!total) return Promise.reject(new Error('nothing to render'));
+  var ac=new OAC(2,Math.ceil((total+tail)*sr),sr),rig=T.buildStudioRig(ac,false),t=0,chunks=[],cur=null;
   T.applyStudio(rig,P);
   /* list every step, grouped a bar at a time */
   secs.forEach(function(sec){
-    var pat=T.patById(P,sec.pat),n=pat.bars*16,r,s,end=t+sec.rep*n*sd;
+    var pat=T.patById(P,sec.pat),n=pat.bars*16,r,s,sd=T.secSd(P,sec),end=t+sec.rep*n*sd;
     for(r=0;r<sec.rep;r++) for(s=0;s<n;s++){
       if(!cur||cur.ev.length>=16){ cur={t:t,ev:[]}; chunks.push(cur); }
-      cur.ev.push({sec:sec,pat:pat,s:s,t:t,fx:r===0&&s===0?end:0});
+      cur.ev.push({sec:sec,pat:pat,s:s,t:t,sd:sd,fx:r===0&&s===0?end:0});
       t+=sd;
     }
   });
   function run(c){
     c.ev.forEach(function(e){
-      if(e.fx) T.sectionFx(rig,e.sec.fx,e.t,e.fx);
-      T.scheduleStep(rig,P,e.sec,e.pat,e.s,e.t+(e.s%2===1?sd*P.swing/100:0),sd,o.only);
+      if(e.fx) T.sectionFx(rig,e.sec.fx,e.t,e.fx,e.sd);
+      T.scheduleStep(rig,P,e.sec,e.pat,e.s,e.t+(e.s%2===1?e.sd*P.swing/100:0),e.sd,o.only);
     });
   }
   /* Creating every note of a long song up front makes rendering crawl, so where the browser allows it the render pauses
@@ -701,9 +780,9 @@ T.normProject=function(p){
     t=t||{}; var id=typeof t.id==='string'&&t.id&&!seen[t.id]?t.id:uid('t'); seen[id]=1;
     var I=BY[t.inst]?BY[t.inst]:BY.kick;
     return {id:id,name:String(t.name||I.name).toUpperCase().slice(0,12),inst:I.id,lv:num(t.lv,0,150,100),pan:num(t.pan,-100,100,0),tn:num(t.tn,-24,24,0),
-      verb:num(t.verb,0,100,0),echo:num(t.echo,0,100,0),mute:!!t.mute,solo:!!t.solo};
+      verb:num(t.verb,0,100,0),echo:num(t.echo,0,100,0),drive:num(t.drive,0,100,0),tone:num(t.tone,-100,100,0),mute:!!t.mute,solo:!!t.solo};
   });
-  if(!p.tracks.length) p.tracks.push({id:uid('t'),name:'KICK',inst:'hkick',lv:100,pan:0,tn:0,verb:0,echo:0,mute:false,solo:false});
+  if(!p.tracks.length) p.tracks.push({id:uid('t'),name:'KICK',inst:'hkick',lv:100,pan:0,tn:0,verb:0,echo:0,drive:0,tone:0,mute:false,solo:false});
   p.patterns=(Array.isArray(p.patterns)?p.patterns:[]).slice(0,32).map(function(q,qi){
     q=q||{}; var id=typeof q.id==='string'&&q.id&&!seenP[q.id]?q.id:uid('p'); seenP[id]=1;
     var bars=[1,2,4].indexOf(+q.bars)>=0?+q.bars:1,N=bars*16,rows={};
@@ -731,9 +810,9 @@ T.normProject=function(p){
     if(s.off) for(x in s.off) if(s.off[x]&&p.tracks.some(function(t){ return t.id===x; })) off[x]=true;
     /* "only" is a shorthand: list the tracks that play and the rest are switched off */
     if(Array.isArray(s.only)) p.tracks.forEach(function(t){ if(s.only.indexOf(t.id)<0) off[t.id]=true; });
-    return {name:String(s.name||'PART '+(si+1)).slice(0,14),pat:pids[s.pat]?s.pat:p.patterns[0].id,rep:num(s.rep,1,64,4),fx:FX[s.fx]?s.fx:'none',off:off};
+    return {name:String(s.name||'PART '+(si+1)).slice(0,14),pat:pids[s.pat]?s.pat:p.patterns[0].id,rep:num(s.rep,1,64,4),fx:FX[s.fx]?s.fx:'none',shift:num(s.shift,-12,12,0),speed:num(s.speed,50,200,100),off:off};
   });
-  if(!p.song.length) p.song.push({name:'PART 1',pat:p.patterns[0].id,rep:4,fx:'none',off:{}});
+  if(!p.song.length) p.song.push({name:'PART 1',pat:p.patterns[0].id,rep:4,fx:'none',shift:0,speed:100,off:{}});
   return p;
 };
 /* turn a pocket-machine beat into a studio project: 8 tracks, one pattern per filled slot, each played four times */
@@ -1104,6 +1183,176 @@ function drehwurm(){
       {name:'SPIRAL',pat:'spin',rep:2,only:drums.concat('acid','acidb','scr','clap','hoov','boom')},
       {name:'OUTRO',pat:'spin',rep:1,fx:'close',only:['kick','bass','hat','tom','acid']}]};
 }
+/* Acid tekk that spins up, G phrygian, 170 BPM. Each stage runs faster and a semitone higher than the last (part Speed and Shift),
+   a half-speed doom break drags it down, and the last drop runs at 221 BPM. Scratches fill the gaps */
+function schleudergang(){
+  var riff=al(0,'XxsxxXx.XxsxxXxs',[0,0,7,0,0,1,0,0,0,7,0,0,6,7,5]).concat(al(16,'XxsxXx.xXsxXsxXX',[0,0,7,0,1,0,0,2,1,0,4,2,1,7,8])),
+      fast=al(0,'XxxxXxxsXxxxXxSs',[0,7,0,7,1,8,1,0,0,7,0,7,2,9,7,5]).concat(al(16,'XxxxXxxsXxxxSsSs',[0,7,0,7,1,8,1,0,4,11,4,11,7,5,2,1])),
+      hi=al(0,'..x..X....x..Xs.',[7,8,7,9,7]).concat(al(16,'..x..X..x.X..xSx',[7,8,7,10,9,8,7])),
+      howl=[[0,7,7,2],[6,8,2],[8,7,6],[14,5,3,2],[16,4,8],[24,5,4,2],[28,7,5]],
+      growl=[[0,0,3,2],[3,0,2],[6,1,3,2],[10,0,2],[12,0,3,2],[16,0,3,2],[19,0,2],[22,1,3,2],[26,0,2],[28,0,1,2],[29,3,1],[30,1,1,2],[31,0,1]],
+      climb=[],i,drums=['kick','bass','rim','hat','open','tom'],all=drums.concat('acid','acidhi','scr','yoi','clap');
+  for(i=0;i<32;i++) climb.push([32+i,i>=24?7:i>=16?(i%2?7:0):(i%4===3?7:0),1,i%4===0?2:1]);
+  function body(kick,acid,scr){
+    return {kick:kick,bass:J(OFF,'..x...x...x.....'),acid:{notes:acid},acidhi:{notes:hi},scr:{notes:scr},yoi:{notes:growl},
+      tom:TOMA,rim:rpt(RIM,2),hat:rpt(H16,2),open:rpt(OFF,2),clap:rpt(CL,2),siren:{notes:[[0,0,32]]},scratch:{notes:[[28,0,4]]},boom:'X'+rpt('.',31)};
+  }
+  return {name:'SCHLEUDERGANG',bpm:170,key:-2,scale:'phrygian',crunch:38,vol:50,
+    tracks:[
+      {id:'kick',inst:'tkick',name:'KICK',tn:2},{id:'bass',inst:'tbass',name:'BASS',tn:2,lv:85},
+      {id:'acid',inst:'acid',name:'ACID',lv:85,echo:18,drive:25},{id:'acidhi',inst:'acid',name:'ACID HIGH',tn:12,lv:52,pan:-30,echo:28},
+      {id:'scr',inst:'scream',name:'SCREAM',tn:12,lv:46,pan:20,verb:18,echo:22},{id:'yoi',inst:'yoi',name:'YOI LOW',tn:-12,lv:62,verb:12,drive:20},
+      {id:'tom',inst:'tom',name:'TOM',lv:22,pan:-30,verb:15},{id:'rim',inst:'rim',name:'RIM',lv:50,pan:-20,echo:20},
+      {id:'hat',inst:'hat',name:'HAT',lv:50,pan:18,tone:20},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18},
+      {id:'clap',inst:'clap',name:'CLAP',lv:78,verb:12},{id:'snare',inst:'hsnare',name:'SNARE',lv:80,verb:18},
+      {id:'scratch',inst:'scratch',name:'SCRATCH',lv:70,pan:-10},{id:'siren',inst:'siren',name:'SIREN',lv:40,verb:25},
+      {id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},{id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25}],
+    patterns:[
+      {id:'main',name:'SPIN',bars:2,rows:body(J(F4,'X...X...X...X.x.'),riff,howl)},
+      {id:'peak',name:'FULL SPIN',bars:2,rows:body(J(F4,'X...X...X..xX.xx'),fast,[[0,14,9,2],[8,13,4],[12,11,5,2],[16,14,9,2],[24,11,4],[28,9,4,2]])},
+      {id:'doom',name:'DOOM',bars:2,rows:{
+        kick:{v:J(F4,'X...X...X...XxXx'),n:barN([0]).concat([0,0,0,0,0,0,0,0,-1,-1,-1,-1,-2,-2,-3,-3])},snare:rpt('....X.......X...',2),
+        yoi:{notes:[[0,0,6,2],[6,1,2],[8,0,6,2],[14,3,2],[16,0,6,2],[22,1,2],[24,-2,4,2],[28,-3,4,2]]},scr:{notes:[[0,7,17,2],[16,8,9],[24,5,8,2]]},
+        acid:{notes:al(0,'X.x.X.xsX.x.X.xs',[0,7,0,0,1,0,7,0,0,6]).concat(al(16,'X.x.X.xsX.xsXxSs',[0,7,0,0,1,0,7,5,4,2,1,0]))},siren:{notes:[[0,0,32]]}}},
+      {id:'gap',name:'GAP',bars:1,rows:{scratch:{notes:[[0,0,8],[12,0,4]]},acid:{notes:al(0,'........XxXxSsSs',[7,5,4,2,1,0,1,0])}}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:{v:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXXXXXX'),n:barN([0,0,0]).concat([0,0,0,0,2,2,2,2,4,4,4,4,7,7,7,7])},
+        snare:J(ROLL,'xxxxxxxxXXXXXXXX'),riser:{notes:[[0,0,64]]},acid:{notes:riff.concat(climb)},siren:{notes:[[0,0,64]]},
+        scr:{notes:[[32,7,8],[40,9,8],[48,11,8],[56,14,8]]}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:4,fx:'open',only:['kick','rim','hat']},
+      {name:'SPIN 1',pat:'main',rep:4,only:drums.concat('acid','clap')},
+      {name:'SPIN 2',pat:'main',rep:2,speed:106,shift:1,only:drums.concat('acid','acidhi','clap')},
+      {name:'SPIN 3',pat:'main',rep:2,speed:112,shift:2,only:drums.concat('acid','acidhi','scr','clap')},
+      {name:'SPIN 4',pat:'main',rep:2,speed:118,shift:3,only:all.concat('scratch')},
+      {name:'GAP',pat:'gap',rep:1,speed:118,shift:3},
+      {name:'DOOM',pat:'doom',rep:2,speed:50,shift:-5,fx:'pump'},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'GAP',pat:'gap',rep:1},
+      {name:'DROP',pat:'peak',rep:4,speed:125,shift:2,only:all.concat('boom','scratch')},
+      {name:'CHOP',pat:'peak',rep:2,speed:125,shift:2,fx:'gate',only:all},
+      {name:'FULL SPIN',pat:'peak',rep:4,speed:130,shift:3,only:all.concat('siren','boom','scratch')},
+      {name:'WIND DOWN',pat:'main',rep:2,fx:'close',only:['kick','bass','rim','hat','tom','acid']},
+      {name:'SLOWER',pat:'main',rep:1,speed:70,shift:-2,only:['kick','bass','rim','hat','acid']},
+      {name:'STOPPED',pat:'main',rep:1,speed:50,shift:-5,fx:'close',only:['kick','bass','hat','acid']}]};
+}
+/* Red-alert frenchcore, E harmonic minor, 200 BPM. A yoi hook over a two-note metal alarm and a wailing siren.
+   The break pumps, one drop is chopped, and the meltdown at the end runs at 230 BPM a tone higher */
+function alarmstufeRot(){
+  var ch=[0,-2,-4,-3],roots=barN(ch),bub=[],arp=[],alarm=[],alarm2=[],
+      mel=[[0,7,2,2],[2,7,2],[4,9,2,2],[6,7,2],[8,11,3,2],[11,9,1],[12,7,4,2],
+           [16,7,2,2],[18,7,2],[20,9,2,2],[22,7,2],[24,12,3,2],[27,9,1],[28,7,4,2],
+           [32,10,2,2],[34,10,2],[36,12,2,2],[38,10,2],[40,7,3,2],[43,5,1],[44,3,4,2],
+           [48,11,2,2],[50,11,2],[52,13,2,2],[54,11,2],[56,8,2,2],[58,6,2],[60,8,2,2],[62,11,2]],
+      howl=[[0,4,14,2],[16,2,14],[32,3,14,2],[48,4,8],[56,6,8,2]],
+      pad=ch.map(function(c,i){ return [i*16,c,16]; }),drums=['kick','bass','clap','hat','open'];
+  ch.forEach(function(c,i){
+    bub=bub.concat(al(i*16,'XxxxxxXxxxXxxxXx',[c,c,c+7,c,c,c+7,c,c+4,c,c+7,c,c,c+7,c+4,c+7,c]));
+    arp=arp.concat(al(i*16,i===3?'XxxxXxxxXxxxSsSs':'XxxxXxxxXxxxXxsx',[c+7,c+9,c+11,c+14,c+11,c+9,c+7,c+9,c+11,c+14,c+11,c+9,c+14,c+11,c+9,c+7]));
+    alarm=alarm.concat(al(i*16,'X.x.X.x.X.x.X.x.',[c+7,c+11]));
+    alarm2=alarm2.concat(al(i*16,'XxXxXxXxXxXxXxXx',[c+7,c+11]));
+  });
+  return {name:'ALARMSTUFE ROT',bpm:200,key:-5,scale:'harmonic',crunch:45,vol:50,
+    tracks:[
+      {id:'kick',inst:'ckick',name:'KICK'},{id:'bass',inst:'rbass',name:'BASS',lv:85},{id:'clap',inst:'clap',name:'CLAP',lv:78,verb:12},
+      {id:'snare',inst:'hsnare',name:'SNARE',lv:80,verb:18},{id:'hat',inst:'hat',name:'HAT',lv:48,pan:18},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18},
+      {id:'yoi',inst:'yoi',name:'YOI',tn:12,lv:70,verb:20,echo:18},{id:'metal',inst:'metal',name:'ALARM',lv:55,pan:25,echo:25},
+      {id:'scr',inst:'scream',name:'SCREAM',tn:12,lv:40,pan:-20,verb:18},{id:'acid',inst:'acid',name:'ACID',lv:72,pan:-10,echo:15,drive:20},
+      {id:'siren',inst:'siren',name:'SIREN',tn:12,lv:38,verb:25},{id:'pad',inst:'choir',name:'CHOIR',lv:80,verb:45,tone:-30},
+      {id:'scratch',inst:'scratch',name:'SCRATCH',lv:70,pan:10},{id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},
+      {id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'main',name:'MAIN',bars:4,rows:{
+        kick:{v:J(F4,F4,F4,'X...X...X.x.XxXx'),n:roots},bass:{v:J(OFF,OFF,OFF,'..x...x.........'),n:roots},
+        clap:rpt(CL,4),hat:rpt(H16,4),open:rpt(OFF,4),yoi:{notes:mel},metal:{notes:alarm},acid:{notes:bub},scr:{notes:howl},
+        siren:{notes:[[0,0,64]]},pad:{notes:pad},scratch:{notes:[[60,0,4]]},boom:'X'+rpt('.',63),crash:'x'+rpt('.',63)}},
+      {id:'rage',name:'RED',bars:4,rows:{
+        kick:{v:J('X...X...X...X.xx','X...X.x.X...X.xx','X...X...X...X.xx','X.x.X.x.XxXxXXXX'),n:roots},bass:{v:J(OFF,OFF,OFF,'................'),n:roots},
+        snare:rpt('....x.......x...',4),hat:rpt(H16,4),open:rpt(OFF,4),yoi:{notes:arp},metal:{notes:alarm2},acid:{notes:bub},scr:{notes:howl},
+        siren:{notes:[[0,0,64]]},boom:'X'+rpt('.',63),crash:'x'+rpt('.',63)}},
+      {id:'terror',name:'TERROR',bars:2,rows:{
+        kick:{v:J('X.X.X.X.X.X.X.X.','X.X.X.X.XXXXXXXX'),n:barN([0]).concat([-2,-2,-2,-2,-2,-2,-2,-2,-2,-2,-3,-3,-4,-4,-3,-3])},
+        snare:J('....x.......x...','....x.......x.xx'),hat:rpt(H8,2),metal:{notes:al(0,'XxXxXxXxXxXxXxXx',[7,11]).concat(al(16,'XxXxXxXxXxXxXxXx',[5,9]))},
+        yoi:{notes:[[0,14,6,2],[5,13,3],[8,11,4,2],[12,9,5],[16,12,6,2],[21,11,3],[24,9,4,2],[28,6,4,2]]},siren:{notes:[[0,7,32]]},scratch:{notes:[[28,0,4]]}}},
+      {id:'stop',name:'STOP',bars:1,rows:{scratch:{notes:[[0,0,6],[8,0,2],[10,0,2],[12,0,4]]},yoi:{notes:al(0,'S.S.S.S.SsSsXxXx',[14,13,11,9,8,7,6,4,6,7,9,11])}}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:{v:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXX....'),n:barN([0,0,0]).concat([0,0,0,0,1,1,1,1,2,2,2,2,4,4,4,4])},
+        snare:J(ROLL,'xxxxxxxxXXXX....'),riser:{notes:[[0,0,60]]},siren:{notes:[[0,0,60]]},
+        metal:{notes:cyc(32,4,0,[7,11],1,2).concat(cyc(48,2,32,[7,11],1,2),cyc(60,1,48,[7,11,9,14],1,4))},
+        yoi:{notes:mel.filter(function(n){ return n[0]<32; }).concat([[32,7,8],[40,9,8],[48,11,6],[54,13,6]])},
+        pad:{notes:[[0,0,16],[16,-2,16],[32,-4,16],[48,-3,12]]}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:2,fx:'open',only:['kick','hat','open','metal']},
+      {name:'GROOVE',pat:'main',rep:1,only:drums.concat('acid','metal')},
+      {name:'BREAK',pat:'main',rep:1,fx:'pump',only:['pad','acid','siren','metal']},
+      {name:'HOOK',pat:'main',rep:2,only:['pad','acid','yoi','clap','metal']},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'STOP',pat:'stop',rep:1},
+      {name:'DROP',pat:'main',rep:1,only:drums.concat('yoi','acid','metal','boom','crash')},
+      {name:'DROP ON',pat:'main',rep:2,only:drums.concat('yoi','acid','metal','scr','scratch')},
+      {name:'TERROR',pat:'terror',rep:2},
+      {name:'CHOP',pat:'rage',rep:1,fx:'gate',off:{siren:true}},
+      {name:'RED',pat:'rage',rep:2,off:{boom:true}},
+      {name:'STOP',pat:'stop',rep:1},
+      {name:'MELTDOWN',pat:'rage',rep:3,speed:115,shift:2},
+      {name:'OUTRO',pat:'main',rep:2,fx:'close',only:['kick','bass','hat','open','pad']}]};
+}
+/* Glitch acid tekk, G sharp phrygian, 160 BPM. The power keeps failing: one-bar bursts at double speed (320 BPM), a half-speed sag
+   five semitones down, then surges that climb to 208 BPM. Metal bleeps tick round in fives and sevens, scratches cut between parts */
+function kurzschluss(){
+  var riff=al(0,'X.xsX.xxX.xsXxSs',[0,7,0,0,1,0,0,7,0,6,5,4,2]).concat(al(16,'X.xsX.xxXxXsXxSs',[0,7,0,0,1,0,7,8,7,5,4,2,1,0])),
+      fast=al(0,'XxxxXxxsXxxxXxSs',[0,7,0,7,1,8,1,0,0,7,0,7,2,9,7,5]).concat(al(16,'XxxxXxxsXxxxSsSs',[0,7,0,7,1,8,1,0,4,11,4,11,7,5,2,1])),
+      tick5=cyc(32,5,1,[7,11,9,14,7,12],1,3),tick7=cyc(32,7,3,[7,9,4],2,2),climb=[],i,
+      drums=['kick','bass','rim','hat','open'];
+  for(i=0;i<32;i++) climb.push([32+i,i>=24?7:i>=16?(i%2?7:0):(i%4===3?7:0),1,i%4===0?2:1]);
+  return {name:'KURZSCHLUSS',bpm:160,key:-1,scale:'phrygian',crunch:36,vol:50,
+    tracks:[
+      {id:'kick',inst:'tkick',name:'KICK',tn:2},{id:'bass',inst:'tbass',name:'BASS',tn:2,lv:105,drive:20},
+      {id:'acid',inst:'acid',name:'ACID',lv:82,echo:18,drive:30},{id:'metal',inst:'metal',name:'BLEEP 5',lv:55,pan:30,echo:30},
+      {id:'metal2',inst:'metal',name:'BLEEP 7',tn:-12,lv:55,pan:-30,echo:22},{id:'scr',inst:'scream',name:'SCREAM',tn:12,lv:44,pan:15,verb:18,echo:20},
+      {id:'yoi',inst:'yoi',name:'YOI',lv:62,pan:-15,verb:15},{id:'scratch',inst:'scratch',name:'SCRATCH',lv:72},
+      {id:'zap',inst:'zap',name:'ZAP',lv:45,pan:35,echo:30},{id:'rim',inst:'rim',name:'RIM',lv:50,pan:-20,echo:20},
+      {id:'hat',inst:'hat',name:'HAT',lv:50,pan:18},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18,tone:25},
+      {id:'clap',inst:'clap',name:'CLAP',lv:78,verb:12},{id:'snare',inst:'hsnare',name:'SNARE',lv:80,verb:18},
+      {id:'riser',inst:'riser',name:'RISER',lv:75,verb:20},{id:'boom',inst:'boom',name:'BOOM',lv:90,verb:25}],
+    patterns:[
+      {id:'main',name:'CIRCUIT',bars:2,rows:{
+        kick:J(F4,'X...X...X..xX.xx'),bass:J(OFF,'..x...x.........'),acid:{notes:riff},metal:{notes:tick5},metal2:{notes:tick7},
+        scr:{notes:[[0,7,7,2],[6,8,2],[16,4,8],[24,5,6,2]]},yoi:{notes:[[4,7,3,2],[12,8,3],[20,7,3,2],[28,5,2],[30,4,2,2]]},
+        rim:rpt(RIM,2),hat:rpt(H16,2),open:rpt(OFF,2),clap:rpt(CL,2),zap:J(E16,'..........x...x.'),boom:'X'+rpt('.',31)}},
+      {id:'surge',name:'SURGE',bars:2,rows:{
+        kick:J('X...X...X..xX.xx','X...X.x.X.xxXxXx'),bass:J(OFF,'..x...x.........'),acid:{notes:fast},metal:{notes:cyc(32,2,0,[7,14,11,14],1,2)},metal2:{notes:tick7},
+        scr:{notes:[[0,14,9,2],[8,13,4],[12,11,5,2],[16,14,9,2],[24,11,4],[28,9,4,2]]},yoi:{notes:[[2,7,2,2],[6,8,2],[10,7,2,2],[14,5,2],[18,7,2,2],[22,8,2],[26,9,2,2],[30,7,2]]},
+        rim:rpt(RIM,2),hat:rpt(H16,2),open:rpt(OFF,2),clap:rpt(CL,2),zap:J(E16,'..........x...x.'),boom:'X'+rpt('.',31)}},
+      {id:'short',name:'SHORT',bars:2,rows:{
+        kick:rpt(F4,2),snare:rpt('....x.......x...',2),hat:rpt(H8,2),metal:{notes:cyc(32,2,0,[7,14,11,14],1,2)},
+        acid:{notes:al(0,'XxXxXxXxXxXxXxXx',[0,7]).concat(al(16,'XxXxXxXxSsSsSsSs',[1,8,1,8,1,8,1,8,7,5,4,2,1,0,1,0]))},scratch:{notes:[[24,0,8]]}}},
+      {id:'sag',name:'SAG',bars:2,rows:{
+        kick:J('X.....X...X.....','X.....X...X.XXXX'),snare:rpt('........X.......',2),metal:{notes:tick5},zap:rpt('......x.........',2),
+        yoi:{notes:[[0,7,6,3],[6,5,4,3],[10,4,6,3],[16,7,6,3],[22,8,4,3],[26,7,6,3]]},scr:{notes:[[0,0,17,2],[16,1,16,2]]}}},
+      {id:'cut',name:'CUT',bars:1,rows:{scratch:{notes:[[0,0,4],[6,0,2],[8,0,4],[12,0,4]]},zap:'x...x...x...x.x.',metal:{notes:al(0,'........XxXxXxXx',[14,13,11,9,7,5,4,2])}}},
+      {id:'build',name:'BUILD',bars:4,rows:{
+        kick:{v:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXXXXXX'),n:barN([0,0,0]).concat([0,0,0,0,2,2,2,2,4,4,4,4,7,7,7,7])},
+        snare:J(ROLL,'xxxxxxxxXXXXXXXX'),riser:{notes:[[0,0,64]]},acid:{notes:riff.concat(climb)},
+        metal:{notes:cyc(32,5,1,[7,11,9,14,7,12],1,3).concat(cyc(48,2,32,[7,11],1,2),cyc(64,1,48,[7,11,9,14],1,4))},
+        scr:{notes:[[32,7,8],[40,9,8],[48,11,8],[56,14,8]]}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:2,fx:'open',only:['kick','hat','rim','metal']},
+      {name:'CIRCUIT',pat:'main',rep:4,only:drums.concat('acid','metal')},
+      {name:'SHORT',pat:'short',rep:1,speed:200,fx:'gate'},
+      {name:'CIRCUIT 2',pat:'main',rep:2,only:drums.concat('acid','metal','metal2','clap','yoi')},
+      {name:'SHORT',pat:'short',rep:1,speed:200},
+      {name:'SAG',pat:'sag',rep:2,speed:50,shift:-5,fx:'pump'},
+      {name:'CUT',pat:'cut',rep:1},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'CUT',pat:'cut',rep:1},
+      {name:'SURGE',pat:'surge',rep:4,speed:110,off:{scr:true}},
+      {name:'SHORT',pat:'short',rep:2,speed:200,fx:'gate'},
+      {name:'SURGE 2',pat:'surge',rep:4,speed:120,shift:2,off:{boom:true}},
+      {name:'SHORT',pat:'short',rep:1,speed:200,shift:2},
+      {name:'OVERLOAD',pat:'surge',rep:4,speed:130,shift:3},
+      {name:'BLACKOUT',pat:'sag',rep:1,speed:50,shift:-7,fx:'close'}]};
+}
 /* raw = the compact form as written above, for checking; make() returns a project ready to open */
 var DEMOS=[
   {id:'first-drop',name:'First Drop',about:'Hardstyle, 150 BPM. A short arrangement to learn from: intro, break, build, drop, outro.',make:function(){ return T.starterProject(); }},
@@ -1112,7 +1361,10 @@ var DEMOS=[
   {id:'acid-teknival',name:'Acid Teknival',about:'Free-party acid tekk, 185 BPM. No tune to speak of: a squelching acid line, tribal toms and a siren.',raw:acidTeknival},
   {id:'saurebad',name:'Saurebad',about:'Acid hardtekk, 190 BPM. Two acid lines and a screaming third. Twice everything drops out for a bar and only the acid is left.',raw:saurebad},
   {id:'kernschmelze',name:'Kernschmelze',about:'Acid frenchcore, 210 BPM. The scream carries a galloping tune over a bubbling acid line, and twice the kick doubles up.',raw:kernschmelze},
-  {id:'drehwurm',name:'Drehwurm',about:'Spinning acid tekk, 176 BPM. Three acid lines turn at different speeds and drift round each other, then lock together for the drop.',raw:drehwurm}
+  {id:'drehwurm',name:'Drehwurm',about:'Spinning acid tekk, 176 BPM. Three acid lines turn at different speeds and drift round each other, then lock together for the drop.',raw:drehwurm},
+  {id:'schleudergang',name:'Schleudergang',about:'Acid tekk that spins up, 170 to 221 BPM. Every stage is faster and a semitone higher, with a half-speed doom break in the middle.',raw:schleudergang},
+  {id:'alarmstufe-rot',name:'Alarmstufe Rot',about:'Red-alert frenchcore, 200 BPM. A yoi hook over a metal alarm and a siren, a chopped drop, and a meltdown at 230.',raw:alarmstufeRot},
+  {id:'kurzschluss',name:'Kurzschluss',about:'Glitch acid tekk, 160 BPM. One-bar bursts at double speed, a half-speed sag, then surges that climb to 208.',raw:kurzschluss}
 ];
 DEMOS.forEach(function(d){ if(!d.make) d.make=function(){ return T.normProject(d.raw()); }; });
 T.DEMOS=DEMOS;
@@ -1157,7 +1409,7 @@ T.zip=function(files){
   return new Blob(parts.concat(central,[e.buffer]),{type:'application/zip'});
 };
 /* a standard MIDI file from [{name, events:[{t,o,b}], head:[bytes]}]; the first track carries the tempo */
-function midiFile(bpm,title,total,list){
+function midiFile(bpm,title,total,list,tempos){
   var PPQ=480,us=Math.round(60000000/bpm);
   function vlq(n){ var b=[n&127]; while((n>>=7)>0) b.unshift((n&127)|128); return b; }
   function track(name,events,head){
@@ -1170,7 +1422,8 @@ function midiFile(bpm,title,total,list){
     var n=out.length;
     return [0x4D,0x54,0x72,0x6B,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255].concat(out);
   }
-  var tracks=[track(title,[],[0,0xFF,0x51,3,(us>>>16)&255,(us>>>8)&255,us&255,0,0xFF,0x58,4,4,2,24,8])];
+  var tev=(tempos||[]).map(function(e){ var u=Math.round(60000000/e.bpm); return {t:e.t,o:0,b:[0xFF,0x51,3,(u>>>16)&255,(u>>>8)&255,u&255]}; });
+  var tracks=[track(title,tev,[0,0xFF,0x51,3,(us>>>16)&255,(us>>>8)&255,us&255,0,0xFF,0x58,4,4,2,24,8])];
   list.forEach(function(t){ if(t.events.length) tracks.push(track(t.name,t.events,t.head)); });
   var all=[0x4D,0x54,0x68,0x64,0,0,0,6,0,1,(tracks.length>>8)&255,tracks.length&255,(PPQ>>8)&255,PPQ&255];
   tracks.forEach(function(t){ Array.prototype.push.apply(all,t); });
@@ -1186,16 +1439,17 @@ T.projectMidi=function(P){
     if(ch===9) ch++;
     by[tr.id]={ch:ch,ev:[]}; list.push({name:tr.name,events:by[tr.id].ev,head:[0,0xC0|ch,I.prog||81]}); ch++;
   });
-  var total=T.songSteps(P)*ST;
+  var total=T.songSteps(P)*ST,tempos=[],lastSp=100;
   P.song.forEach(function(sec){
     var pat=T.patById(P,sec.pat),n=pat.bars*16,r,s;
+    if((sec.speed||100)!==lastSp){ lastSp=sec.speed||100; tempos.push({t:t,bpm:P.bpm*lastSp/100}); }
     for(r=0;r<sec.rep;r++) for(s=0;s<n;s++){
       P.tracks.forEach(function(tr){
         if(sec.off[tr.id]) return;
         var row=pat.rows[tr.id],v=row&&row.v[s],I=T.inst(tr.inst); if(!v) return;
         var at=t+(s%2===1?Math.round(ST*P.swing/100):0),note,len,c,ev;
         if(I.gm){ note=I.gm; len=ST/2; c=9; ev=drums; }
-        else if(by[tr.id]){ note=I.base+tr.tn+(P.key|0)+T.degSemis(row.n[s],P.scale); len=Math.max(1,row.l[s]|0)*ST-10; c=by[tr.id].ch; ev=by[tr.id].ev; }
+        else if(by[tr.id]){ note=I.base+tr.tn+(P.key|0)+(sec.shift|0)+T.degSemis(row.n[s],P.scale); len=Math.max(1,row.l[s]|0)*ST-10; c=by[tr.id].ch; ev=by[tr.id].ev; }
         else return;
         note=Math.max(0,Math.min(127,note));
         ev.push({t:at,o:1,b:[0x90|c,note,VELO[v]]}); ev.push({t:Math.min(total,at+len),o:0,b:[0x80|c,note,0]});
@@ -1203,7 +1457,7 @@ T.projectMidi=function(P){
       t+=ST;
     }
   });
-  return midiFile(P.bpm,'Tock '+P.name,total,list);
+  return midiFile(P.bpm,'Tock '+P.name,total,list,tempos);
 };
 T.download=function(blob,name){
   var url=URL.createObjectURL(blob),a=document.createElement('a');
