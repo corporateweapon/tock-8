@@ -3,19 +3,21 @@
    Everything hangs off window.Tock. See CLAUDE.md for the data formats. */
 (function(){
 'use strict';
-var T={version:'4.1'};
+var T={version:'4.2'};
 
 /* ================= kits and built-in beats ================= */
 var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
 var HARD_TR=[['KICK','Hard kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['BASS','Reverse bass'],['LEAD','Screech lead'],['CRASH','Crash']];
+/* the tekk and core kits carry the tune with a hoover: the screech sounded too much like a keyboard for those styles */
+var HOOV_TR=HARD_TR.slice(0,6).concat([['LEAD','Hoover lead'],['CRASH','Crash']]);
 /* kick recipe per kit: f = pitch of the tail in Hz, top = how high the pitch drop starts, sw = drop time, len = tail length,
    d1/d2 = distortion before and after the mid boost, mid/midG = where and how hard the mids are pushed, lp = brightness, punch = clean thump on top */
 var KITS=[
  {id:'CLASSIC',tr:TRACKS},
  {id:'HARD',tr:HARD_TR,k:{f:55,top:7,sw:0.11,len:0.36,d1:6,mid:850,midG:10,d2:3,lp:7000,punch:1}},
  {id:'JUMP',tr:HARD_TR,k:{f:55,top:5,sw:0.08,len:0.24,d1:3.5,mid:500,midG:7,d2:2,lp:4500,punch:1.15}},
- {id:'TEKK',tr:HARD_TR,k:{f:49,top:5,sw:0.13,len:0.27,d1:9,mid:320,midG:9,d2:4,lp:3200,punch:0.8}},
- {id:'CORE',tr:HARD_TR,k:{f:55,top:8,sw:0.16,len:0.30,d1:18,mid:1300,midG:8,d2:6,lp:9000,punch:0.7}}
+ {id:'TEKK',tr:HOOV_TR,k:{f:49,top:5,sw:0.13,len:0.27,d1:9,mid:320,midG:9,d2:4,lp:3200,punch:0.8}},
+ {id:'CORE',tr:HOOV_TR,k:{f:55,top:8,sw:0.16,len:0.30,d1:18,mid:1300,midG:8,d2:6,lp:9000,punch:0.7}}
 ];
 var MINOR=[0,2,3,5,7,8,10,12];
 var SLOTS=['A','B','C','D'];
@@ -99,7 +101,7 @@ var PRESETS=[
  {name:'LAGOS',style:'Further afield',bpm:108,swing:12,space:16,p:[[
   'X.....x.x.....x.','................','x.xxx.xxx.xxx.xx','................',
   '....x.......x...','......x......xx.','..x.x..x..x.x..x','x..x..x...x.x...']]},
- /* hard kits. Rows: kick, snare, hat, open hat, clap, reverse bass, screech lead, crash. n = notes (scale steps 1 to 8) per row */
+ /* hard kits. Rows: kick, snare, hat, open hat, clap, reverse bass, lead (screech on HARD and JUMP, hoover on TEKK and CORE), crash. n = notes (scale steps 1 to 8) per row */
  {name:'HARDSTYLE',style:'Hard dance',kit:1,bpm:150,swing:0,space:18,crunch:20,lv:[100,90,60,70,85,85,70,60],p:[[
   'X...X...X...X...','................','.o.o.o.o.o.o.o.o','..x...x...x...x.',
   '....x.......x...','................','..x..x..x..x.x..','................'],[
@@ -405,7 +407,8 @@ var HARDV=[hardKick,hardSnare,VOICE[2],VOICE[3],VOICE[4],revBass,lead,crash];
 /* play one of the pocket machine's 8 voices. kit 0 = classic, 1 to 4 = hard kits */
 T.hit=function(rig,kit,ti,time,vel,ratio,dest,sd){
   R=rig; CK=KITS[kit].k||KITS[1].k; CSD=sd; CLEN=0; CCH=null; CID='';
-  (kit?HARDV:VOICE)[ti](time,vel,ratio,dest);
+  if(kit>=3&&ti===6) hoover(time,vel*1.4,ratio,dest); /* 1.4: measured, so the hoover sits where the screech did */
+  else (kit?HARDV:VOICE)[ti](time,vel,ratio,dest);
 };
 
 /* ---------------- studio-only voices ---------------- */
@@ -722,9 +725,9 @@ T.normProject=function(p){
 T.projectFromBeat=function(b){
   b=readBeat(b);
   var hard=b.kit>0,kicks=[null,'hkick','jkick','tkick','ckick'],
-      ids=hard?[kicks[b.kit],'hsnare','hat','open','clap',b.kit===3?'tbass':'rbass','screech','crash']:['kick','snare','hat','open','clap','tom','rim','bell'],
+      ids=hard?[kicks[b.kit],'hsnare','hat','open','clap',b.kit===3?'tbass':'rbass',b.kit>=3?'hoover':'screech','crash']:['kick','snare','hat','open','clap','tom','rim','bell'],
       names=KITS[b.kit].tr,tracks=[],patterns=[],song=[];
-  ids.forEach(function(id,i){ tracks.push({id:'t'+(i+1),name:names[i][0],inst:id,lv:b.lv[i],tn:b.tn[i],verb:b.space}); });
+  ids.forEach(function(id,i){ tracks.push({id:'t'+(i+1),name:names[i][0],inst:id,lv:id==='hoover'?Math.min(150,Math.round(b.lv[i]*1.4)):b.lv[i],tn:b.tn[i],verb:b.space}); });
   b.pats.forEach(function(pat,pi){
     if(!pat.some(function(r){ return r.some(Boolean); })) return;
     var rows={}; pat.forEach(function(r,i){ rows['t'+(i+1)]={v:r.slice(),n:b.pit[pi][i].slice()}; });

@@ -11,8 +11,9 @@ Live at https://corporateweapon.github.io/tock-8/ (GitHub Pages, `main` branch, 
 | `index.html` | The pocket machine: 8 voices, 16 steps, 4 patterns per beat, 5 kits. Works on phone and desktop. |
 | `studio.html` | The studio: up to 16 tracks, patterns of 1, 2 or 4 bars, a song made of parts, a piano roll, a mixer. Desktop only; do not spend effort making it work on phones. |
 | `engine.js` | Shared by both pages, exposed as `window.Tock`. Kits, the built-in beats (`PRESETS`), every voice, both audio rigs, the song renderer, WAV / zip / MIDI writers, `analyse`. **Sounds live only here.** |
+| `board.js` | The live board (`window.TockBoard`), opened from the studio's Live key. One canvas that draws a DJ board playing along with the song. It only watches: it never edits the project. Desktop only. |
 | `sw.js`, `manifest.webmanifest`, `icon-*.png` | Offline copy and install metadata. `sw.js` is network-first; add any new file the pages load to its `SHELL` list. |
-| `tools/serve.py` | Local server that also accepts `POST /save/<name>` and writes into `renders/` (ignored by git). |
+| `tools/serve.py` | Local server that also accepts `POST /save/<name>` (wav, mid, zip, json, png) and writes into `renders/` (ignored by git). |
 | `tock8.ico` | Icon for the PC desktop shortcut. Leave it in place. |
 
 ## Running it
@@ -44,6 +45,9 @@ tock8.demos(); tock8.demo('nachtschicht')   // the finished songs that ship with
 await tock8.renderAndSave('song')    // 'song' | 'stems' | 'midi' | 'pattern' | 'project'
 await tock8.render('song', {from: 2, to: 3, tail: 0})   // one part only -> {name, type, bytes}
 tock8.analyse(bytes)                 // measurements of a WAV made here
+tock8.live(); tock8.live(false)      // open and close the live board
+tock8.liveState()                    // what the board is showing: decks, crossfader, filter, faders, which pads are lit
+await tock8.liveShot('name', [x, y, w, h], 2)   // save a picture of the board (crop in board units, 1600 by 900) -> {saved: path}
 ```
 
 `renderAndSave` returns `{saved: 'E:\\...\\renders\\file.wav'}` under `tools/serve.py`, or `{downloaded: name}` anywhere else. A whole song renders in a few seconds. Long calls can exceed a tool timeout: start the work, stash the result on `window`, and read it in a second call.
@@ -51,6 +55,15 @@ tock8.analyse(bytes)                 // measurements of a WAV made here
 ## You cannot hear it. Measure it.
 
 `analyse` returns `seconds`, `peak`, `rmsDb`, `clippedPct`, `silentPct` and the share of energy that is low (under 200 Hz), mid, and high (over 2.5 kHz). Use it to catch silence, clipping, a part that is far louder or quieter than its neighbours, or a mix with no highs. Reference points from the built-in material: classic beats sit around -16 to -20 dB RMS, hard kits around -10 to -13 dB, and a hard kit drop is about 75% low / 22% mid / 2% high. Rendering one part at a time (`from`/`to`) shows how an arrangement moves. To compare how loud tracks are against each other, render each one alone (`only`) with the project's `crunch` set to 0: with crunch on, the master distortion lifts a quiet track played alone and the numbers mislead. In the songs that ship, the lead sits 10 to 14 dB under the kick, pads and stabs 15 to 17 dB under, and breaks 4 to 6 dB under drops. Measurements do not tell you whether something sounds good. Say plainly that a sound is unheard, and treat the owner's ears as the test.
+
+## The live board
+
+`board.js` draws everything on one canvas in a fixed 1600 by 900 layout that is scaled to fit the window. The studio's clock calls `TockBoard.step(...)` for each step it schedules; the board reads the project through a small host object (`boardHost` in `studio.html`) and never writes to it.
+
+- Each deck holds a pattern as a record: one ring per track (track 1 outermost), one turn per bar, a mark sounding as it passes the rail at 12 o'clock. Cells behind the rail already show the next bar. Consecutive parts that use the same pattern stay on one deck; a change of pattern throws the crossfader to the other deck, which was already showing that pattern cued.
+- The tower shows the part effect (`open` / `close` / `thin`) as a key and as the Filter knob turning across the part, the one-shot sounds (`riser fall boom zap crash`) as keys, and the room and echo sends. The bank has a strip per track: fader down when the part switches the track off, meter, note window, pad.
+- Calm mode (the Calm key, M, or the computer's reduced-motion setting) removes sparks, shake and flashes.
+- Checking it: the Browser pane does not run animation frames while it is hidden, so drive frames yourself (`setInterval(function(){ TockBoard.render(); }, 16)` while the song plays), then look at `tock8.liveState()` and save pictures with `tock8.liveShot(...)` and read the PNG. A new sound or effect needs no board change unless it should get its own key: those lists are `SHOTS` and `FXK` at the top of `board.js`.
 
 ## Beat format (pocket page)
 
@@ -66,7 +79,7 @@ Compact form, as used in `PRESETS` and accepted by `setBeat`:
 ```
 
 - `p` holds up to 4 patterns (A to D), each exactly 8 rows of exactly 16 characters: `.` off, `x` hit, `X` loud, `o` soft.
-- `kit`: 0 CLASSIC (kick, snare, hat, open hat, clap, tom, rim, cowbell), 1 HARD, 2 JUMP, 3 TEKK, 4 CORE. On kits 1 to 4 the rows are kick, snare, hat, open hat, clap, reverse bass, screech lead, crash.
+- `kit`: 0 CLASSIC (kick, snare, hat, open hat, clap, tom, rim, cowbell), 1 HARD, 2 JUMP, 3 TEKK, 4 CORE. On kits 1 to 4 the rows are kick, snare, hat, open hat, clap, reverse bass, lead, crash. The lead is the screech on HARD and JUMP and the hoover on TEKK and CORE (swapped 2026-11-16 at the owner's request).
 - `n` digits are steps of a natural minor scale (1 = home note, 8 = an octave up).
 - The full form (`getBeat()`) expands these to `pats[4][8][16]` (values 0 to 3) and `pit[4][8][16]` (0 to 7).
 
@@ -97,7 +110,7 @@ Compact form, as used in `PRESETS` and accepted by `setBeat`:
 - Saved work lives in the browser: `localStorage` keys `tock8.v2` (pocket) and `tock8.studio.v1` (studio). Never change what those keys mean without migrating old data; `Tock.norm` and `Tock.normProject` exist to upgrade older shapes on load.
 - The built-in beat list can grow, but existing names must keep working: saved sessions find their beat by name.
 - The original classic kit and the first 18 beats are liked as they are. Do not retune them. New sounds go in as new voices or kits.
-- Both pages load the engine as `engine.js?v=<version>`. When `engine.js` changes, raise `version` at the top of it and the `?v=` in both script tags, so a browser cannot pair a new page with a stored older engine. Pages should also cope with an older engine (check a new `Tock` member exists before using it).
+- Both pages load the engine as `engine.js?v=<version>`, and the studio loads `board.js?v=<version>` the same way. When `engine.js` or `board.js` changes, raise `version` at the top of `engine.js` and the `?v=` in every script tag, so a browser cannot pair a new page with a stored older engine. Pages should also cope with an older engine (check a new `Tock` member exists before using it).
 - After touching `engine.js`, re-render a classic beat and a hard beat from the pocket page and compare `analyse` numbers with the reference points above, then check the pocket page at phone width (375 px): no sideways scroll, the floating play key works.
 - No external requests of any kind (fonts, scripts, analytics). The pocket page must keep working offline from a Home Screen icon.
 - The owner finds the `screech` lead too keyboard-like for tekk and frenchcore (said 2026-11-16). For those styles carry the tune with `hoover`, `acid`, `saw` or a kick that plays notes.

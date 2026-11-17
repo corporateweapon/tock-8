@@ -2,7 +2,7 @@
    Online: always fetch the newest files and refresh the stored copy, so updates show up on the next open.
    Offline or slow: serve the stored copy. Saved beats live in the page's own storage and are not touched here. */
 const CACHE = 'tock8-shell';
-const SHELL = ['./', './index.html', './engine.js', './studio.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
+const SHELL = ['./', './index.html', './engine.js', './board.js', './studio.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

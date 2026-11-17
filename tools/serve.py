@@ -1,7 +1,7 @@
 """Local server for Tock-8.
 
 Serves the app folder on this computer only, and lets the page write finished
-files (WAV, MIDI, zip, JSON) into the renders/ folder, so a script or a Claude
+files (WAV, MIDI, zip, JSON, PNG) into the renders/ folder, so a script or a Claude
 session gets a real file path back instead of a browser download.
 
     python tools/serve.py [port]        default port 8766
@@ -18,7 +18,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "renders")
-NAME = re.compile(r"/save/([A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(?:wav|mid|zip|json))")
+NAME = re.compile(r"/save/([A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(?:wav|mid|zip|json|png))")
 MAX_BYTES = 800 * 1024 * 1024
 
 
