@@ -33,6 +33,9 @@ PLAN = {
     'blast': ('blast', 44100, [(15.187, 16.387)], {'edge': 0.002}),
     'casio': ('casio', 32000, [(0.024, 3.252)], {'edge': 0.002}),
     'funk': ('funk', 32000, [(0.0, 3.6923)], {'edge': 0.002}),
+    # spoken words: a piece may name its own source as (source, start, end)
+    'talk': (None, 22050, [('w-please', 0.22, 0.64), ('w-please', 0.79, 1.52), ('w-hotpink', 0.19, 0.87), ('w-after', 0.23, 1.06), ('w-yeahhuh', 0.22, 0.98)], {}),
+    'word': (None, 22050, [('w-hot', 0.15, 0.56), ('w-yeah', 0.20, 0.68), ('w-whatever', 0.21, 0.84), ('w-gorgeous', 0.20, 0.69)], {}),
 }
 
 
@@ -52,9 +55,11 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     total = 0
     for name, (src, rate, pieces, opt) in PLAN.items():
-        x, sr = load(src)
+        if src: x, sr = load(src)
         parts, cuts, t = [], [], 0.0
-        for a, b in pieces:
+        for piece in pieces:
+            if len(piece) == 3: x, sr = load(piece[0])
+            a, b = piece[-2:]
             seg = x[int(a * sr):int(b * sr)]
             if opt.get('loop'):  # make the end run into the start, so it can go round and round without a click
                 n = int(opt['loop'] * sr); body = seg[n:].copy()

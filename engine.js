@@ -3,7 +3,7 @@
    Everything hangs off window.Tock. See CLAUDE.md for the data formats. */
 (function(){
 'use strict';
-var T={version:'4.7'};
+var T={version:'4.8'};
 
 /* ================= kits and built-in beats ================= */
 var TRACKS=[['KICK','Kick'],['SNARE','Snare'],['HAT','Closed hat'],['OPEN','Open hat'],['CLAP','Clap'],['TOM','Tom'],['RIM','Rimshot'],['BELL','Cowbell']];
@@ -677,6 +677,47 @@ function shout(time,v,r,d){
   });
   noise(time,0.06,filter('bandpass',2100,1,gainEnv(time,0.22*v,0.055,d)));
 }
+/* club kick: the short, punchy kick of house and club pop. Hits hard, gets out of the way, no long tail */
+function clubKick(time,v,r,d){
+  var sh=shaper(3.2,d);
+  choke('bassG',time);
+  osc('sine',time,230*r,48*r,0.085,0.26,gainEnv(time,0.62*v,0.25,sh));
+  osc('triangle',time,900,120,0.02,0.03,gainEnv(time,0.3*v,0.025,sh));
+  noise(time,0.012,filter('highpass',3000,0,gainEnv(time,0.2*v,0.01,d)));
+}
+/* snap: a finger snap, two tiny clicks a hair apart */
+function snap(time,v,r,d){
+  [0,0.012].forEach(function(o,i){ noise(time+o,0.05,filter('bandpass',2300*r,3,gainEnv(time+o,(i?2.6:1)*v,i?0.06:0.012,d))); });
+  noise(time+0.012,0.02,filter('highpass',5000,0,gainEnv(time+0.012,0.8*v,0.015,d)));
+}
+/* buzz bass: the rude, buzzing bass of club pop. Two squares and a saw a little apart, driven flat, with a filter that barks open
+   on each note. The kick cuts it off, so it ducks out of the kick's way by itself */
+function buzz(time,v,r,d){
+  var ac=R.ac,f=55*r,dur=Math.max(0.05,(CLEN||CSD*2)-CSD*0.2);
+  choke('bassG',time);
+  var amp=ampHold(time,0.2*Math.min(v,1.15),0.004,dur,0.03,d); R.bassG=amp;
+  var lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=4;
+  lp.frequency.setValueAtTime(Math.min(f*(v>1.2?40:26),7000),time); lp.frequency.exponentialRampToValueAtTime(Math.max(f*7,500),time+0.12);
+  lp.connect(amp);
+  var mix=ac.createGain(); mix.gain.value=0.5; mix.connect(shaper(8,lp));
+  [['square',1,-10,0.5],['square',1,11,0.5],['sawtooth',2,5,0.3],['sine',0.5,0,0.5]].forEach(function(p){
+    var o=ac.createOscillator(),g=ac.createGain(); o.type=p[0]; o.frequency.value=f*p[1]; o.detune.value=p[2]; g.gain.value=p[3];
+    o.connect(g); g.connect(mix); o.start(time); o.stop(time+dur+0.1);
+  });
+}
+/* rave piano: the bright house piano chord. Three notes of the scale at once that hit hard and die away */
+function ravePiano(time,v,r,d){
+  var ac=R.ac,dec=Math.max(0.25,Math.min(CLEN||0.4,1.2)),ch=CCH||[1,1.1892,1.4983],amp=gainEnv(time,0.34*v,dec,d);
+  var lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.Q.value=1;
+  lp.frequency.setValueAtTime(7000,time); lp.frequency.exponentialRampToValueAtTime(1400,time+dec*0.8); lp.connect(amp);
+  var mix=ac.createGain(); mix.gain.value=0.7; mix.connect(lp);
+  ch.concat([ch[0]*2]).forEach(function(c,i){
+    [['triangle',1,0.9],['sawtooth',1,0.35],['square',2,0.12]].forEach(function(p){
+      var o=ac.createOscillator(),g=ac.createGain(); o.type=p[0]; o.frequency.value=220*r*c*p[1]; o.detune.value=i*3-4; g.gain.value=p[2];
+      o.connect(g); g.connect(mix); o.start(time); o.stop(time+dec+0.05);
+    });
+  });
+}
 /* ---------------- samples: the only sounds here that are recordings ----------------
    Short public-domain and CC0 clips kept in samples/ (samples/CREDITS.md says where each came from). A clip is fetched and decoded
    the first time a song needs it; until then its track is silent. Three kinds:
@@ -741,12 +782,15 @@ var INSTR=[
  {id:'pkick',name:'Piep kick',group:'Hard drums',fn:piepKick,gm:36,pitched:true,base:45},
  {id:'hsnare',name:'Hard snare',group:'Hard drums',fn:hardSnare,gm:38},
  {id:'bsnare',name:'Break snare',group:'Hard drums',fn:breakSnare,gm:40},
+ {id:'club',name:'Club kick',group:'Hard drums',fn:clubKick,gm:36},
+ {id:'snap',name:'Finger snap',group:'Hard drums',fn:snap,gm:39},
  {id:'crash',name:'Crash',group:'Hard drums',fn:crash,gm:49},
  {id:'rbass',name:'Reverse bass',group:'Bass',fn:revBass,kit:1,pitched:true,base:33,prog:38},
  {id:'tbass',name:'Tekk bass',group:'Bass',fn:revBass,kit:3,pitched:true,base:31,prog:38},
  {id:'sub',name:'Sub bass',group:'Bass',fn:sub,pitched:true,base:33,prog:38,defLen:2},
  {id:'zaag',name:'Zaag bass',group:'Bass',fn:zaag,pitched:true,base:33,prog:38,defLen:2},
  {id:'wob',name:'Wobble bass',group:'Bass',fn:wob,pitched:true,base:33,prog:38,defLen:4},
+ {id:'buzz',name:'Buzz bass',group:'Bass',fn:buzz,pitched:true,base:33,prog:38,defLen:2},
  {id:'screech',name:'Screech lead',group:'Synths',fn:lead,pitched:true,base:57,prog:81,defLen:2},
  {id:'saw',name:'Supersaw',group:'Synths',fn:supersaw,pitched:true,base:57,prog:81,defLen:2},
  {id:'pluck',name:'Pluck',group:'Synths',fn:pluck,pitched:true,base:57,prog:80},
@@ -758,6 +802,7 @@ var INSTR=[
  {id:'yoi',name:'Yoi lead',group:'Synths',fn:yoi,pitched:true,base:57,prog:85,defLen:2},
  {id:'metal',name:'Metal bleep',group:'Synths',fn:metal,pitched:true,base:69,prog:14},
  {id:'horn',name:'Air horn',group:'Synths',fn:horn,pitched:true,base:57,prog:61,defLen:4},
+ {id:'piano',name:'Rave piano',group:'Synths',fn:ravePiano,pitched:true,chord:true,base:57,prog:1,defLen:2},
  {id:'zap',name:'Zap',group:'Effects',fn:zap},
  {id:'riser',name:'Riser',group:'Effects',fn:riser,defLen:16},
  {id:'fall',name:'Fall',group:'Effects',fn:fall,defLen:16},
@@ -780,7 +825,9 @@ var INSTR=[
  {id:'s_rooster',name:'Rooster',group:'Samples',fn:sampleVoice,sample:'rooster.wav',gain:0.4,defLen:8},
  {id:'s_rev',name:'Chainsaw rev',group:'Samples',fn:sampleVoice,sample:'rev.wav',gain:0.4,defLen:8},
  {id:'s_wilhelm',name:'Wilhelm scream',group:'Samples',fn:sampleVoice,sample:'wilhelm.wav',gain:0.4,defLen:4},
- {id:'s_bang',name:'Explosion',group:'Samples',fn:sampleVoice,sample:'explosion.wav',gain:0.5,defLen:8}
+ {id:'s_bang',name:'Explosion',group:'Samples',fn:sampleVoice,sample:'explosion.wav',gain:0.5,defLen:8},
+ {id:'s_talk',name:'Voice: phrases',group:'Samples',fn:sampleVoice,sample:'talk.wav',pitched:true,pick:5,cuts:[0,0.42,1.15,1.83,2.66],gain:0.8,base:60,prog:54,defLen:4},
+ {id:'s_word',name:'Voice: words',group:'Samples',fn:sampleVoice,sample:'word.wav',pitched:true,pick:4,cuts:[0,0.41,0.89,1.52],gain:0.8,base:60,prog:54,defLen:2}
 ],BY={};
 INSTR.forEach(function(I){ BY[I.id]=I; });
 T.INSTR=INSTR; T.inst=function(id){ return BY[id]||BY.kick; };
@@ -1857,6 +1904,129 @@ function kettensaege(){
     ].concat(ramp('KETTE REISST','mosh',[130,150,170,200],[3,4,5,7]),[
       {name:'TIMBER',pat:'fall',rep:1,speed:50,shift:-5,fx:'close'}])};
 }
+/* Club pop, F sharp minor, 140 BPM. A buzzing bass riff under a hard four-on-the-floor, chord stabs on the off-beat, and a voice
+   that says "hot pink" at the end of every other bar. The drops add a second, heavier kick underneath; the last one is faster and higher */
+function hotPink(){
+  var riff=[[0,0,2,2],[3,0,1],[4,0,2],[7,3,1],[8,0,2,2],[11,0,1],[12,5,2],[14,4,2],[16,0,2,2],[19,0,1],[20,0,2],[23,3,1],[24,6,2,2],[26,5,2],[28,4,2],[30,2,2]],
+      hook=[[0,7,3,2],[4,9,2],[6,11,2],[8,9,3],[12,7,4],[16,7,3,2],[20,9,2],[22,11,2],[24,12,3,2],[28,11,4]],
+      stabs=[[2,0,2],[6,0,2],[10,0,2],[14,0,2],[18,-2,2],[22,-2,2],[26,-1,2],[30,-1,2]],
+      chords=[[0,0,6],[6,0,4],[12,0,4],[16,-2,6],[22,-2,4],[28,-2,4],[32,2,6],[38,2,4],[44,2,4],[48,-1,6],[54,-1,4],[60,-1,4]],
+      drums=['kick','clap','hat','open'];
+  return {name:'HOT PINK',bpm:140,key:-3,scale:'minor',crunch:30,vol:50,
+    tracks:[
+      {id:'kick',inst:'club',name:'KICK'},{id:'hk',inst:'hkick',name:'HEAVY KICK',lv:62},{id:'bass',inst:'buzz',name:'BUZZ',lv:84,drive:15},
+      {id:'sub',inst:'sub',name:'SUB',lv:28},{id:'clap',inst:'clap',name:'CLAP',lv:90,verb:14},{id:'snap',inst:'snap',name:'SNAP',lv:70,pan:-20,verb:10},
+      {id:'hat',inst:'hat',name:'HAT',lv:55,pan:18},{id:'open',inst:'open',name:'OPEN',lv:62,pan:-18},
+      {id:'stab',inst:'stab',name:'STABS',lv:70,verb:16,pan:10},{id:'saw',inst:'saw',name:'HOOK',lv:120,verb:24,echo:16},
+      {id:'piano',inst:'piano',name:'PIANO',lv:85,verb:22},{id:'talk',inst:'s_talk',name:'VOICE',lv:110,verb:12,echo:18},
+      {id:'word',inst:'s_word',name:'VOICE UP',tn:9,lv:105,pan:15,echo:22},{id:'glitch',inst:'glitch',name:'GLITCH',lv:42,pan:-25,echo:20},
+      {id:'riser',inst:'riser',name:'RISER',lv:70,verb:20},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'main',name:'VERSE',bars:2,rows:{kick:rpt(F4,2),bass:{notes:riff},clap:rpt(CL,2),snap:rpt('..........x.....',2),hat:rpt(H16,2),open:rpt(OFF,2),
+        talk:{notes:[[28,2,4]]},word:{notes:[[12,0,2]]}}},
+      {id:'heavy',name:'DROP',bars:2,rows:{kick:J(F4,'X...X...X...X.xx'),hk:J(F4,'X...X...X..xX.XX'),bass:{notes:riff},sub:{notes:[[0,0,8],[8,0,8],[16,0,8],[24,-2,8]]},
+        clap:rpt(CL,2),hat:rpt(H8,2),open:rpt(OFF,2),stab:{notes:stabs},saw:{notes:hook},talk:{notes:[[28,2,4]]},word:{notes:[[11,0,1],[12,0,2],[19,1,2]]},
+        glitch:{notes:[[30,7,2]]},crash:'x'+rpt('.',31)}},
+      {id:'brk',name:'BREAK',bars:4,rows:{piano:{notes:chords},saw:{notes:hook.concat(hook.map(function(n){ return [n[0]+32,n[1],n[2],n[3]]; }))},
+        talk:{notes:[[28,2,4],[60,2,4]]},snap:rpt('....x.......x...',4),sub:{notes:[[0,0,16],[16,-2,16],[32,2,16],[48,-1,16]]}}},
+      {id:'build',name:'BUILD',bars:4,rows:{kick:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXX....'),clap:J(ROLL,'xxxxxxxxXXXX....'),riser:{notes:[[0,0,60]]},
+        piano:{notes:chords.filter(function(n){ return n[0]<48; })},word:{notes:cyc(32,8,4,[0],2).concat(cyc(48,4,32,[0],2),cyc(60,2,48,[0],1))},bass:{notes:riff}}},
+      {id:'stop',name:'SAY IT',bars:1,rows:{talk:{notes:[[4,2,6]]},word:{notes:[[0,0,1],[1,0,1],[2,0,2]]},snap:'............x.x.'}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:2,fx:'open',only:['kick','hat','bass']},
+      {name:'VERSE',pat:'main',rep:4},
+      {name:'BREAK',pat:'brk',rep:1},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'SAY IT',pat:'stop',rep:1},
+      {name:'DROP',pat:'heavy',rep:4},
+      {name:'CHOP',pat:'heavy',rep:2,fx:'gate',off:{saw:true}},
+      {name:'VERSE 2',pat:'main',rep:2,shift:1},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin',shift:1},
+      {name:'SAY IT',pat:'stop',rep:1},
+      {name:'DROP 2',pat:'heavy',rep:4,speed:108,shift:2},
+      {name:'OUTRO',pat:'main',rep:2,fx:'close',only:['kick','bass','talk','snap']}]};
+}
+/* Acid house pop, A minor, 128 BPM. A house piano and a squelching acid line, a voice saying "after-party", and a baile funk loop
+   chopped up in the middle. The pump effect breathes through the break, and the ending creeps faster towards sunrise */
+function afterParty(){
+  var ch=[0,-2,2,-1],roots=barN(ch),keys=[],off=[],arp=[],
+      riff=al(0,'X.xsX.xxX.xsXxSs',[0,7,0,0,2,0,0,7,0,5,4,2,0]).concat(al(16,'XxxsX.xxXsXsXxSs',[0,7,0,3,2,0,7,9,7,5,4,2,0,-1,0])),
+      funkC=[[0,0,2],[2,0,2],[4,1,2],[6,0,1],[7,0,1],[8,4,2],[10,5,2],[12,6,2],[14,6,1],[15,6,1],
+             [16,8,2],[18,8,2],[20,9,2],[22,12,1],[23,12,1],[24,12,1],[25,12,1],[26,13,2],[28,14,1],[29,14,1],[30,14,1],[31,14,1]],
+      drums=['kick','clap','hat','open','bass'];
+  ch.forEach(function(c,i){
+    [0,3,6,10,13].forEach(function(s,j){ keys.push([i*16+s,c+7,2,j%2?1:2]); });
+    [2,6,10,14].forEach(function(s){ off.push([i*16+s,c,2]); });
+    arp=arp.concat(al(i*16,'XxxsXxxxXxxsXxSs',[c,c+7,c,c+2,c+4,c+7,c+4,c+2,c,c+7,c,c+2,c+4,c+7,c+9,c+7]));
+  });
+  return {name:'AFTER PARTY',bpm:128,key:0,scale:'minor',crunch:26,vol:50,
+    tracks:[
+      {id:'kick',inst:'club',name:'KICK'},{id:'hk',inst:'hkick',name:'HEAVY KICK',lv:58},{id:'bass',inst:'buzz',name:'BUZZ',lv:80},
+      {id:'sub',inst:'sub',name:'SUB',lv:28},{id:'acid',inst:'acid',name:'ACID',lv:95,echo:20,drive:25},{id:'piano',inst:'piano',name:'PIANO',lv:95,verb:22},
+      {id:'pad',inst:'choir',name:'CHOIR',lv:55,verb:45,tone:-30},{id:'funk',inst:'s_funk',name:'FUNK LOOP',lv:110},
+      {id:'clap',inst:'clap',name:'CLAP',lv:90,verb:14},{id:'hat',inst:'hat',name:'HAT',lv:55,pan:18},{id:'open',inst:'open',name:'OPEN',lv:64,pan:-18},
+      {id:'talk',inst:'s_talk',name:'VOICE',lv:110,verb:14,echo:20},{id:'word',inst:'s_word',name:'VOICE UP',tn:7,lv:100,pan:-15,echo:22},
+      {id:'saw',inst:'saw',name:'SAW',lv:110,verb:26,echo:16},{id:'riser',inst:'riser',name:'RISER',lv:70,verb:20},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'main',name:'KEYS',bars:4,rows:{kick:rpt(F4,4),bass:{notes:off},piano:{notes:keys},clap:rpt(CL,4),hat:rpt(H16,4),open:rpt(OFF,4),
+        talk:{notes:[[56,3,6]]},word:{notes:[[28,1,2]]}}},
+      {id:'acidp',name:'ACID',bars:4,rows:{kick:J(F4,F4,F4,'X...X...X...X.xx'),hk:rpt(F4,4),bass:{notes:off},sub:{notes:ch.map(function(c,i){ return [i*16,c,14]; })},
+        acid:{notes:arp},piano:{notes:keys},clap:rpt(CL,4),hat:rpt(H8,4),open:rpt(OFF,4),
+        saw:{notes:[[0,11,6,2],[8,9,6],[16,12,6,2],[24,11,6],[32,13,6,2],[40,11,6],[48,10,4,2],[52,11,4],[56,13,8,2]]},
+        talk:{notes:[[56,3,6]]},word:{notes:[[12,1,2],[44,1,2]]},crash:'x'+rpt('.',63)}},
+      {id:'funk',name:'FUNK',bars:2,rows:{funk:{notes:funkC},kick:rpt(F4,2),acid:{notes:riff},clap:rpt(CL,2),talk:{notes:[[24,4,6]]},word:{notes:[[6,1,2]]}}},
+      {id:'brk',name:'BREAK',bars:4,rows:{piano:{notes:keys},pad:{notes:ch.map(function(c,i){ return [i*16,c,16]; })},talk:{notes:[[24,4,6],[56,3,6]]},
+        acid:{notes:arp.filter(function(n){ return n[0]>=32; })}}},
+      {id:'build',name:'BUILD',bars:4,rows:{kick:J(F4,F4,'X.X.X.X.X.X.X.X.','XXXXXXXXXXXX....'),clap:J(ROLL,'xxxxxxxxXXXX....'),riser:{notes:[[0,0,60]]},
+        piano:{notes:keys.filter(function(n){ return n[0]<48; })},acid:{notes:arp},word:{notes:cyc(32,8,4,[1],2).concat(cyc(48,4,32,[1],2),cyc(60,2,48,[1],1))}}}],
+    song:[
+      {name:'INTRO',pat:'main',rep:1,fx:'open',only:['kick','hat','piano']},
+      {name:'KEYS',pat:'main',rep:1},
+      {name:'ACID',pat:'acidp',rep:1,only:drums.concat('acid','piano','talk')},
+      {name:'BREAK',pat:'brk',rep:1,fx:'pump'},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'DROP',pat:'acidp',rep:2},
+      {name:'FUNK',pat:'funk',rep:2},
+      {name:'DROP 2',pat:'acidp',rep:2,speed:106,shift:2}
+    ].concat(ramp('SUNRISE','funk',[110,116,122,128],[2,2,3,3]),[
+      {name:'OUTRO',pat:'brk',rep:1,fx:'close'}])};
+}
+/* Slow and mean, then not slow at all. F minor, 100 BPM. A half-time verse with a sub bass, finger snaps and a voice that could not
+   care less; then the same song at 140 and 150 in a Jersey club rhythm (five kicks to the bar) with a wobble bass */
+function whatever(){
+  var subs=[[0,0,6],[6,0,3],[10,3,5],[16,0,6],[22,0,3],[26,-2,6]],
+      wobs=[[0,0,8,2],[8,3,4,1],[12,1,4,2],[16,0,8,2],[24,-2,4,1],[28,-1,4,2]],
+      chords=[[0,0,8],[8,0,6],[16,-2,8],[24,-1,6]],
+      JK='X...X...X..X..X.';
+  return {name:'WHATEVER',bpm:100,key:-4,scale:'minor',crunch:30,vol:50,
+    tracks:[
+      {id:'kick',inst:'club',name:'KICK'},{id:'hk',inst:'hkick',name:'HEAVY KICK',lv:60},{id:'sub',inst:'sub',name:'SUB',lv:30},
+      {id:'wob',inst:'wob',name:'WOBBLE',lv:66},{id:'snap',inst:'snap',name:'SNAP',lv:95,verb:14},{id:'clap',inst:'clap',name:'CLAP',lv:90,verb:14},
+      {id:'hat',inst:'hat',name:'HAT',lv:55,pan:18},{id:'open',inst:'open',name:'OPEN',lv:60,pan:-18},{id:'rim',inst:'rim',name:'RIM',lv:55,pan:-22,echo:18},
+      {id:'talk',inst:'s_talk',name:'VOICE',lv:115,verb:12,echo:16},{id:'word',inst:'s_word',name:'VOICE UP',tn:8,lv:110,pan:12,echo:24},
+      {id:'piano',inst:'piano',name:'PIANO',lv:85,verb:24},{id:'stab',inst:'stab',name:'STABS',lv:70,verb:16},
+      {id:'glitch',inst:'glitch',name:'GLITCH',lv:42,pan:25,echo:20},{id:'riser',inst:'riser',name:'RISER',lv:70,verb:20},{id:'crash',inst:'crash',name:'CRASH',lv:55,verb:30}],
+    patterns:[
+      {id:'slow',name:'VERSE',bars:2,rows:{kick:J('X.....X...X.....','X.....X..XX.....'),snap:rpt('........x.......',2),hat:J('x.x.x.x.x.xxx.x.','x.x.x.xxx.x.xxxx'),
+        sub:{notes:subs},word:{notes:[[12,2,4]]},talk:{notes:[[27,0,2],[30,1,4]]},rim:rpt('...x......x.....',2)}},
+      {id:'jersey',name:'JERSEY',bars:2,rows:{kick:rpt(JK,2),hk:rpt(JK,2),clap:rpt(CL,2),rim:rpt('..x...x...x..x..',2),hat:rpt(H8,2),open:rpt(OFF,2),
+        wob:{notes:wobs},stab:{notes:[[2,7,2],[6,7,2],[10,7,2],[18,5,2],[22,5,2],[26,6,2]]},word:{notes:[[3,3,1],[11,3,1],[19,2,3]]},
+        talk:{notes:[[28,1,4]]},glitch:{notes:[[14,7,2]]},crash:'x'+rpt('.',31)}},
+      {id:'brk',name:'BREAK',bars:2,rows:{piano:{notes:chords},sub:{notes:[[0,0,14],[16,-2,8],[24,-1,8]]},word:{notes:[[12,2,4],[28,3,4]]},snap:rpt('........x.......',2)}},
+      {id:'build',name:'BUILD',bars:2,rows:{kick:J('X...X...X.X.X.X.','XXXXXXXXXXXX....'),clap:J('x...x...x.x.x.x.','xxxxxxxxXXXX....'),riser:{notes:[[0,0,28]]},
+        piano:{notes:chords.filter(function(n){ return n[0]<24; })},talk:{notes:[[0,0,2],[8,0,2],[16,0,1],[18,0,1],[20,0,1],[22,0,1],[28,1,4]]}}}],
+    song:[
+      {name:'INTRO',pat:'slow',rep:1,fx:'open',only:['hat','snap','sub','rim']},
+      {name:'VERSE',pat:'slow',rep:3},
+      {name:'BREAK',pat:'brk',rep:2},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin'},
+      {name:'JERSEY',pat:'jersey',rep:4,speed:140},
+      {name:'VERSE 2',pat:'slow',rep:2,shift:1},
+      {name:'BUILD',pat:'build',rep:1,fx:'thin',shift:1},
+      {name:'JERSEY 2',pat:'jersey',rep:4,speed:150,shift:2},
+      {name:'CHOP',pat:'jersey',rep:2,speed:150,shift:2,fx:'gate'},
+      {name:'OUTRO',pat:'slow',rep:1,fx:'close',only:['kick','snap','sub','word','talk']}]};
+}
 /* raw = the compact form as written above, for checking; make() returns a project ready to open */
 var DEMOS=[
   {id:'first-drop',name:'First Drop',about:'Hardstyle, 150 BPM. A short arrangement to learn from: intro, break, build, drop, outro.',make:function(){ return T.starterProject(); }},
@@ -1874,7 +2044,10 @@ var DEMOS=[
   {id:'abrissbirne',name:'Abrissbirne',about:'Wrecking-ball frenchcore, 205 BPM. A big supersaw tune, bars that wind back and smash in, a zaag bass, breakcore at 307 and every drop a semitone higher.',raw:abrissbirne},
   {id:'bauernhof',name:'Bauernhof',about:'Farmyard hardtekk, 185 BPM, made with recordings: a cow moos the riff, pigs are the percussion, a goat answers, a Casio drum loop is chopped up and a chainsaw howls over the drop.',raw:bauernhof},
   {id:'houston',name:'Houston',about:'Space frenchcore, 200 BPM. A real shuttle countdown is timed so that liftoff lands on the drop; then a blast beat, Apollo 13 calling in its problem at half speed, and a second launch.',raw:houston},
-  {id:'kettensaege',name:'Kettensaege',about:'Chainsaw breakcore, 200 BPM. A real chainsaw plays the lead over a piep kick, a baile funk loop and a blast beat get chopped up, and twice a tree comes down.',raw:kettensaege}
+  {id:'kettensaege',name:'Kettensaege',about:'Chainsaw breakcore, 200 BPM. A real chainsaw plays the lead over a piep kick, a baile funk loop and a blast beat get chopped up, and twice a tree comes down.',raw:kettensaege},
+  {id:'hot-pink',name:'Hot Pink',about:'Club pop, 140 BPM. A buzzing bass riff under a hard four-on-the-floor, chord stabs, and a voice saying "hot pink". The drops put a heavier kick underneath.',raw:hotPink},
+  {id:'after-party',name:'After Party',about:'Acid house pop, 128 BPM. A house piano, a squelching acid line, a voice saying "after-party" and a chopped baile funk loop, creeping faster towards sunrise.',raw:afterParty},
+  {id:'whatever',name:'Whatever',about:'Slow and mean at 100 BPM with a sub bass, finger snaps and a bored voice, then the same song at 140 and 150 in a Jersey club rhythm with a wobble bass.',raw:whatever}
 ];
 DEMOS.forEach(function(d){ if(!d.make) d.make=function(){ return T.normProject(d.raw()); }; });
 T.DEMOS=DEMOS;

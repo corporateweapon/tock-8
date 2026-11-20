@@ -24,6 +24,10 @@ Downloaded 2026-11-17.
 | `wilhelm.wav` | The Wilhelm scream | [Wilhelm Scream.ogg](https://commons.wikimedia.org/wiki/File:Wilhelm_Scream.ogg) | Probably Sheb Wooley; from the Sunset Editorial sound effects library | CC0 |
 | `explosion.wav` | An explosion | [Explosion 10.ogg](https://commons.wikimedia.org/wiki/File:Explosion_10.ogg) | tcpp | Public domain |
 | `gong.wav` | One strike of a gong | [Gong55.ogg](https://commons.wikimedia.org/wiki/File:Gong55.ogg) | stephan, PDSounds | CC0 |
+| `talk.wav` | One voice saying: bitch, please, hot pink, after-party, yeah-huh | Lingua Libre recordings [bitch, please](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Flame,_not_lame-bitch,_please.wav), [hot pink](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Flame,_not_lame-hot_pink.wav), [after-party](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Flame,_not_lame-after-party.wav), [yeah-huh](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Flame,_not_lame-yeah-huh.wav) | Flame, not lame | CC0 |
+| `word.wav` | Voices saying: hot, yeah, whatever, gorgeous | Lingua Libre recordings [hot](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Wodencafe-hot.wav), [yeah](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Wodencafe-yeah.wav), [whatever](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Wodencafe-whatever.wav), [gorgeous](https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Grendelkhan-gorgeous.wav) | Wodencafe; Grendelkhan | CC0 |
+
+The two voice files were downloaded 2026-11-20.
 
 Rules for adding more: public domain or CC0 only, with the source page recorded here. Keep each file short (mono, under about
 500 KB) because the whole folder is published with the site.
